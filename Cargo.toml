@@ -5,5 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
+log = "0.4"
+simplelog = "0.12"
 bitflags = "2"
+
 portable-pty = "0.9"
+vte = "0.15"
