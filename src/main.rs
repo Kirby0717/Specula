@@ -3,40 +3,48 @@ mod grid;
 mod terminal;
 
 fn main() -> anyhow::Result<()> {
-    use portable_pty::CommandBuilder;
-    use portable_pty::native_pty_system;
+    log_init();
 
-    println!("PTY作成");
-    let pty_system = native_pty_system();
-    let pair = pty_system.openpty(portable_pty::PtySize {
-        rows: 24,
-        cols: 80,
-        pixel_width: 1920 / 2,
-        pixel_height: 1080,
-    })?;
+    let (mut terminal, handle) =
+        terminal::Terminal::new(10, 30, 1_000_000, "bash")?;
 
-    println!("シェル起動");
-    let cmd = CommandBuilder::new("bash");
-    let mut child = pair.slave.spawn_command(cmd)?;
+    for _ in 0..15 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        terminal.process_pty_output();
+    }
 
-    println!("パイプの構築");
-    let mut reader = pair.master.try_clone_reader()?; // slave の出力を読む
-    let mut writer = pair.master.take_writer()?; // slave に入力を送る
+    println!("send echo hello");
+    terminal.write(b"echo hello\r");
 
-    writer.write_all(b"\x1b[1;1R")?;
+    for _ in 0..15 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        terminal.process_pty_output();
+    }
 
-    println!("lsコマンドのテスト");
-    writer.write_all("ls\n".as_bytes())?;
+    println!("~~~~~~~~~~");
+    println!("{}", terminal.core.dump_visible());
 
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    terminal.write(b"exit\r");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    terminal.process_pty_output();
 
-    let mut output = [0; 1 << 12];
-    let len = reader.read(&mut output)?;
-    print!("{}", String::from_utf8_lossy(&output[..len]));
-
-    println!("exitコマンドのテスト");
-    writer.write_all("exit\n".as_bytes())?;
-    child.wait()?;
-
+    terminal.pty.wait()?;
+    handle.join().ok();
     Ok(())
+}
+
+fn log_init() {
+    use simplelog::{
+        CombinedLogger, Config, LevelFilter, SimpleLogger, WriteLogger,
+    };
+
+    CombinedLogger::init(vec![
+        SimpleLogger::new(LevelFilter::Debug, Config::default()),
+        WriteLogger::new(
+            LevelFilter::Debug,
+            Config::default(),
+            std::fs::File::create("specula.log").unwrap(),
+        ),
+    ])
+    .unwrap();
 }
