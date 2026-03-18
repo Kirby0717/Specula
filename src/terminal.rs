@@ -2,7 +2,7 @@ use super::grid::Grid;
 
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex, mpsc},
+    sync::mpsc,
     thread::JoinHandle,
 };
 

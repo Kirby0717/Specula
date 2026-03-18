@@ -1,9 +1,14 @@
 mod cell;
 mod grid;
 mod terminal;
+mod window;
 
 fn main() -> anyhow::Result<()> {
     log_init();
+
+    window::run_app()?;
+
+    return Ok(());
 
     let (mut terminal, handle) =
         terminal::Terminal::new(10, 30, 1_000_000, "bash")?;
@@ -39,9 +44,9 @@ fn log_init() {
     };
 
     CombinedLogger::init(vec![
-        SimpleLogger::new(LevelFilter::Debug, Config::default()),
+        SimpleLogger::new(LevelFilter::Info, Config::default()),
         WriteLogger::new(
-            LevelFilter::Debug,
+            LevelFilter::Info,
             Config::default(),
             std::fs::File::create("specula.log").unwrap(),
         ),
