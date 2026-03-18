@@ -1,9 +1,14 @@
 mod cell;
 mod grid;
 mod terminal;
+mod window;
 
 fn main() -> anyhow::Result<()> {
     log_init();
+
+    window::run_app()?;
+
+    return Ok(());
 
     let (mut terminal, handle) =
         terminal::Terminal::new(10, 30, 1_000_000, "bash")?;
