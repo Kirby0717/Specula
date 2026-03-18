@@ -44,9 +44,9 @@ fn log_init() {
     };
 
     CombinedLogger::init(vec![
-        SimpleLogger::new(LevelFilter::Debug, Config::default()),
+        SimpleLogger::new(LevelFilter::Info, Config::default()),
         WriteLogger::new(
-            LevelFilter::Debug,
+            LevelFilter::Info,
             Config::default(),
             std::fs::File::create("specula.log").unwrap(),
         ),

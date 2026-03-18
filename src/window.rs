@@ -74,8 +74,53 @@ impl App {
         gpu.configure_surface();
         App { gpu, window }
     }
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        self.gpu.size = new_size;
+        self.gpu.configure_surface();
+    }
     fn render(&mut self) {
-        todo!()
+        // スワップチェーンのバックバッファの取得
+        let surface_texture = self
+            .gpu
+            .surface
+            .get_current_texture()
+            .expect("failed to acquire next swapchain texture");
+        let texture_view =
+            surface_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    // Without add_srgb_suffix() the image we will be working with
+                    // might not be "gamma correct".
+                    //format: Some(self.surface_format),
+                    ..Default::default()
+                });
+
+        let mut encoder =
+            self.gpu.device.create_command_encoder(&Default::default());
+
+        // レンダーパスの設定
+        let render_pass =
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+        drop(render_pass);
+
+        self.gpu.queue.submit([encoder.finish()]);
+        self.window.pre_present_notify();
+        surface_texture.present();
     }
 }
 
@@ -110,8 +155,8 @@ impl ApplicationHandler for AppHandler {
             WindowEvent::RedrawRequested => {
                 app.render();
             }
-            WindowEvent::Resized(_size) => {
-                log::info!("サイズ変更がされました");
+            WindowEvent::Resized(size) => {
+                app.resize(size);
             }
             _ => {}
         }
