@@ -1634,6 +1634,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "bitflags 2.11.0",
+ "bytemuck",
  "log",
  "pollster",
  "portable-pty",
