@@ -123,11 +123,31 @@ impl App {
         let window = Arc::new(window);
         let mut gpu = GpuContext::new(&window);
         gpu.configure_surface();
+        // フォントの読み込み
+        let font_data =
+            std::fs::read("./BizinGothicCCNerdFont-Regular.ttf").unwrap();
+        let font = fontdue::Font::from_bytes(
+            font_data,
+            fontdue::FontSettings::default(),
+        )
+        .unwrap();
+        let px = 24.0;
+        let line_metrics = font.horizontal_line_metrics(px).unwrap();
+        let cell_height =
+            (line_metrics.ascent - line_metrics.descent).ceil() as u32;
+
+        // 等幅フォントなので任意の文字の advance_width がセル幅になる
+        let (metrics, _) = font.rasterize('A', px);
+        let cell_width = metrics.advance_width.ceil() as u32;
+
+        let (metrics, bitmap) = font.rasterize('鬱', px);
+        log::info!("size: {}", bitmap.len());
+
         let dbg_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("テスト用テクスチャ"),
             size: wgpu::Extent3d {
-                width: 32,
-                height: 32,
+                width: cell_width * 2,
+                height: cell_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -139,13 +159,6 @@ impl App {
                 | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        let mut data = vec![0_u8; 32 * 32];
-        for y in 0..32 {
-            for x in 0..32 {
-                let l = ((y * 10 + x * 20) % 256) as u8;
-                data[y * 32 + x] = l;
-            }
-        }
         gpu.queue.write_texture(
             wgpu::TexelCopyTextureInfoBase {
                 texture: &dbg_texture,
@@ -153,13 +166,17 @@ impl App {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &data,
+            &bitmap,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(dbg_texture.width()),
-                rows_per_image: Some(dbg_texture.height()),
+                bytes_per_row: Some(metrics.width as u32),
+                rows_per_image: Some(metrics.height as u32),
             },
-            dbg_texture.size(),
+            wgpu::Extent3d {
+                width: metrics.width as u32,
+                height: metrics.height as u32,
+                depth_or_array_layers: 1,
+            },
         );
         let dbg_texture_view =
             dbg_texture.create_view(&wgpu::TextureViewDescriptor::default());
