@@ -1,6 +1,4 @@
-use crate::cell::CellFlags;
-
-use super::cell::Cell;
+use super::cell::{Cell, CellFlags};
 
 use std::collections::VecDeque;
 

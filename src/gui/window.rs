@@ -1,67 +1,11 @@
+use super::{GlyphAtlas, GpuContext};
+
 use std::sync::Arc;
 
 use winit::{
-    application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop,
-    window::Window,
+    application::ApplicationHandler, event::WindowEvent, window::Window,
 };
 
-pub fn run_app() -> anyhow::Result<()> {
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    event_loop.run_app(&mut AppHandler::default())?;
-    Ok(())
-}
-
-struct GpuContext {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    size: winit::dpi::PhysicalSize<u32>,
-    surface: wgpu::Surface<'static>,
-    surface_format: wgpu::TextureFormat,
-}
-impl GpuContext {
-    fn new(window: &Arc<Window>) -> Self {
-        // デバイスとキューの作成
-        let instance =
-            wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        use pollster::FutureExt as _;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .block_on()
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .block_on()
-            .unwrap();
-
-        // 描画先のウィンドウ情報の取得
-        let size = window.inner_size();
-        let surface = instance.create_surface(window.clone()).unwrap();
-        let cap = surface.get_capabilities(&adapter);
-        let surface_format = cap.formats[0];
-
-        GpuContext {
-            device,
-            queue,
-            size,
-            surface,
-            surface_format,
-        }
-    }
-    fn configure_surface(&mut self) {
-        let surface_config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: self.surface_format,
-            view_formats: vec![self.surface_format],
-            alpha_mode: wgpu::CompositeAlphaMode::Auto,
-            width: self.size.width.max(1),
-            height: self.size.height.max(1),
-            desired_maximum_frame_latency: 2,
-            present_mode: wgpu::PresentMode::AutoNoVsync,
-        };
-        self.surface.configure(&self.device, &surface_config);
-    }
-}
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -112,74 +56,22 @@ const VERTICES: &[Vertex] = &[
 struct App {
     window: Arc<Window>,
     gpu: GpuContext,
+    atlas: GlyphAtlas,
     // 仮のデバッグ用テクスチャ
-    dbg_texture: wgpu::Texture,
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
+
+    s: String,
 }
 impl App {
     fn new(window: Window) -> Self {
         let window = Arc::new(window);
         let mut gpu = GpuContext::new(&window);
         gpu.configure_surface();
-        // フォントの読み込み
-        let font_data =
-            std::fs::read("./BizinGothicCCNerdFont-Regular.ttf").unwrap();
-        let font = fontdue::Font::from_bytes(
-            font_data,
-            fontdue::FontSettings::default(),
-        )
-        .unwrap();
-        let px = 24.0;
-        let line_metrics = font.horizontal_line_metrics(px).unwrap();
-        let cell_height =
-            (line_metrics.ascent - line_metrics.descent).ceil() as u32;
 
-        // 等幅フォントなので任意の文字の advance_width がセル幅になる
-        let (metrics, _) = font.rasterize('A', px);
-        let cell_width = metrics.advance_width.ceil() as u32;
-
-        let (metrics, bitmap) = font.rasterize('鬱', px);
-        log::info!("size: {}", bitmap.len());
-
-        let dbg_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("テスト用テクスチャ"),
-            size: wgpu::Extent3d {
-                width: cell_width * 2,
-                height: cell_height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        gpu.queue.write_texture(
-            wgpu::TexelCopyTextureInfoBase {
-                texture: &dbg_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &bitmap,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(metrics.width as u32),
-                rows_per_image: Some(metrics.height as u32),
-            },
-            wgpu::Extent3d {
-                width: metrics.width as u32,
-                height: metrics.height as u32,
-                depth_or_array_layers: 1,
-            },
-        );
-        let dbg_texture_view =
-            dbg_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // アトラスの作成
+        let atlas = GlyphAtlas::new(&gpu, 16.0);
         let shader = gpu
             .device
             .create_shader_module(wgpu::include_wgsl!("./shader.wgsl"));
@@ -221,7 +113,7 @@ impl App {
                     wgpu::BindGroupEntry {
                         binding: 0,
                         resource: wgpu::BindingResource::TextureView(
-                            &dbg_texture_view,
+                            &atlas.view,
                         ),
                     },
                     wgpu::BindGroupEntry {
@@ -287,13 +179,18 @@ impl App {
                     usage: wgpu::BufferUsages::VERTEX,
                 });
 
+        let s = include_str!(
+            "../../「Ｒｅ：ゼロから始める異世界生活」[2024-01-28_20h57m].csv"
+        );
         App {
             gpu,
             window,
-            dbg_texture,
+            atlas,
             render_pipeline,
             bind_group,
             vertex_buffer,
+
+            s: s.chars().rev().collect(),
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -362,8 +259,8 @@ impl ApplicationHandler for AppHandler {
         let window_attributes = Window::default_attributes()
             .with_title("test")
             .with_inner_size(winit::dpi::PhysicalSize {
-                width: 1000,
-                height: 1000,
+                width: 1024,
+                height: 1024,
             });
         let window = event_loop
             .create_window(window_attributes)
@@ -390,6 +287,17 @@ impl ApplicationHandler for AppHandler {
             }
             WindowEvent::Resized(size) => {
                 app.resize(size);
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                use winit::keyboard::*;
+                if event.state.is_pressed()
+                    && event.physical_key == PhysicalKey::Code(KeyCode::Space)
+                {
+                    if let Some(c) = app.s.pop() {
+                        let _ = app.atlas.get_or_insert(&app.gpu, c);
+                        app.window.request_redraw();
+                    }
+                }
             }
             _ => {}
         }
