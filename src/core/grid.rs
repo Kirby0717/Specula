@@ -133,23 +133,23 @@ impl Grid {
         match mode {
             0 => {
                 // カーソルの右側
-                self.visible_row(row).inner[col..].fill(Cell::default());
+                self.visible_row_mut(row)[col..].fill(Cell::default());
                 // カーソルの下側
                 for row in row + 1..self.rows {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             1 => {
                 // カーソルの左側
-                self.visible_row(row).inner[..=col].fill(Cell::default());
+                self.visible_row_mut(row)[..=col].fill(Cell::default());
                 // カーソルの上側
                 for row in 0..row {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             2 => {
                 for row in 0..self.rows {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             _ => log::debug!("未対応の画面消去モード: {}", mode),
@@ -160,11 +160,11 @@ impl Grid {
     // 2: 行全体を消去
     pub fn erase_row(&mut self, mode: usize) {
         let col = self.cursor.point.col;
-        let row = self.visible_row(self.cursor.point.row);
+        let row = self.visible_row_mut(self.cursor.point.row);
         match mode {
-            0 => row.inner[col..].fill(Cell::default()),
-            1 => row.inner[..=col].fill(Cell::default()),
-            2 => row.inner.fill(Cell::default()),
+            0 => row[col..].fill(Cell::default()),
+            1 => row[..=col].fill(Cell::default()),
+            2 => row.fill(Cell::default()),
             _ => log::debug!("未対応の行消去モード: {}", mode),
         }
     }
@@ -201,9 +201,23 @@ impl Grid {
             self.buffer.insert(insert_idx, Row::new(self.cols));
         }
     }
-    fn visible_row(&mut self, row: usize) -> &mut Row {
+    pub fn visible_row(&self, row: usize) -> &[Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
         let buffer_index = self.buffer.len() - self.rows + row;
-        &mut self.buffer[buffer_index]
+        &self.buffer[buffer_index].inner
+    }
+    fn visible_row_mut(&mut self, row: usize) -> &mut [Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
+        let buffer_index = self.buffer.len() - self.rows + row;
+        &mut self.buffer[buffer_index].inner
     }
     fn cell_at_cursor(&mut self) -> &mut Cell {
         // 本来なら起こらない
@@ -221,7 +235,7 @@ impl Grid {
         }
 
         let Point { row, col } = self.cursor.point;
-        &mut self.visible_row(row).inner[col]
+        &mut self.visible_row_mut(row)[col]
     }
     fn add_row(&mut self) {
         self.buffer.push_back(Row::new(self.cols));
@@ -232,6 +246,12 @@ impl Grid {
     pub fn write_char(&mut self, c: char) {
         self.display_offset = 0;
 
+        let width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+        if width == 0 {
+            return;
+        }
+
+        // 折り返し処理
         if self.cursor.pending_wrap {
             let cell = self.cell_at_cursor();
             cell.flags.insert(CellFlags::WRAPLINE);
@@ -245,6 +265,14 @@ impl Grid {
             self.cursor.pending_wrap = false;
         }
 
+        /*if width == 2 {
+            // 全角
+            if self.cursor.point.col
+        }
+        else {
+            //半角
+        }*/
+
         let cell = self.cell_at_cursor();
         cell.c = c;
 
@@ -254,21 +282,5 @@ impl Grid {
         else {
             self.cursor.point.col += 1;
         }
-    }
-
-    /// 可視領域の内容をデバッグ用文字列として返す
-    pub fn dump_visible(&self) -> String {
-        let mut result = String::new();
-        for r in 0..self.rows {
-            let idx = self.buffer.len() - self.rows + r;
-            for cell in &self.buffer[idx].inner {
-                result.push(cell.c);
-            }
-            /*/ 末尾の空白を除去すると見やすい
-            let trimmed = result.trim_end();
-            result.truncate(trimmed.len());*/
-            result.push('\n');
-        }
-        result
     }
 }
