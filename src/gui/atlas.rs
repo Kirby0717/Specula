@@ -15,7 +15,7 @@ pub struct GlyphAtlas {
     slots_per_row: u32,
 }
 impl GlyphAtlas {
-    const ATLAS_SIZE: u32 = 1024;
+    const ATLAS_SIZE: u32 = 1 << 11;
     pub fn new(gpu: &GpuContext, px: f32) -> Self {
         // フォントの読み込み
         let font_data = std::fs::read("./BizinGothicCCNerdFont-Regular.ttf")

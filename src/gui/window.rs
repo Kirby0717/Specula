@@ -61,8 +61,6 @@ struct App {
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
-
-    s: String,
 }
 impl App {
     fn new(window: Window) -> Self {
@@ -71,7 +69,14 @@ impl App {
         gpu.configure_surface();
 
         // アトラスの作成
-        let atlas = GlyphAtlas::new(&gpu, 16.0);
+        let mut atlas = GlyphAtlas::new(&gpu, 32.0);
+        let test_data = include_str!(
+            "../../「Ｒｅ：ゼロから始める異世界生活」[2024-01-28_20h57m].csv"
+        );
+        for c in test_data.chars() {
+            let _ = atlas.get_or_insert(&gpu, c);
+        }
+
         let shader = gpu
             .device
             .create_shader_module(wgpu::include_wgsl!("./shader.wgsl"));
@@ -179,9 +184,6 @@ impl App {
                     usage: wgpu::BufferUsages::VERTEX,
                 });
 
-        let s = include_str!(
-            "../../「Ｒｅ：ゼロから始める異世界生活」[2024-01-28_20h57m].csv"
-        );
         App {
             gpu,
             window,
@@ -189,8 +191,6 @@ impl App {
             render_pipeline,
             bind_group,
             vertex_buffer,
-
-            s: s.chars().rev().collect(),
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -288,17 +288,19 @@ impl ApplicationHandler for AppHandler {
             WindowEvent::Resized(size) => {
                 app.resize(size);
             }
-            WindowEvent::KeyboardInput { event, .. } => {
+            /*WindowEvent::KeyboardInput { event, .. } => {
                 use winit::keyboard::*;
                 if event.state.is_pressed()
                     && event.physical_key == PhysicalKey::Code(KeyCode::Space)
                 {
-                    if let Some(c) = app.s.pop() {
-                        let _ = app.atlas.get_or_insert(&app.gpu, c);
-                        app.window.request_redraw();
+                    for _ in 0..1000 {
+                        if let Some(c) = app.s.pop() {
+                            let _ = app.atlas.get_or_insert(&app.gpu, c);
+                            app.window.request_redraw();
+                        }
                     }
                 }
-            }
+            }*/
             _ => {}
         }
     }
