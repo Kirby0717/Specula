@@ -1,16 +1,14 @@
-mod cell;
-mod grid;
-mod terminal;
-mod window;
+mod core;
+mod gui;
 
 fn main() -> anyhow::Result<()> {
     log_init();
 
-    window::run_app()?;
+    gui::run_app()?;
 
     return Ok(());
 
-    let (mut terminal, handle) =
+    /*let (mut terminal, handle) =
         terminal::Terminal::new(10, 30, 1_000_000, "bash")?;
 
     for _ in 0..15 {
@@ -35,7 +33,7 @@ fn main() -> anyhow::Result<()> {
 
     terminal.pty.wait()?;
     handle.join().ok();
-    Ok(())
+    Ok(())*/
 }
 
 fn log_init() {
