@@ -255,32 +255,62 @@ impl Grid {
         if self.cursor.pending_wrap {
             let cell = self.cell_at_cursor();
             cell.flags.insert(CellFlags::WRAPLINE);
-            if self.cursor.point.row == self.rows - 1 {
-                self.add_row();
-            }
-            else {
-                self.cursor.point.row += 1;
-            }
-            self.cursor.point.col = 0;
-            self.cursor.pending_wrap = false;
+            self.linefeed();
+            self.carriage_return();
         }
 
-        /*if width == 2 {
-            // 全角
-            if self.cursor.point.col
+        // 全角
+        if width == 2 {
+            // 入らなければ改行
+            if self.cols - 1 <= self.cursor.point.col {
+                let cell = self.cell_at_cursor();
+                cell.c = ' ';
+                cell.flags = CellFlags::empty();
+                self.linefeed();
+                self.carriage_return();
+            }
+
+            self.clear_wide_at_cursor();
+            let cell = self.cell_at_cursor();
+            cell.c = c;
+            cell.flags = CellFlags::WIDE_CHAR;
+            self.cursor_right(1);
+            let cell = self.cell_at_cursor();
+            cell.c = ' ';
+            cell.flags = CellFlags::WIDE_CHAR_SPACER;
         }
+        //半角
         else {
-            //半角
-        }*/
+            self.clear_wide_at_cursor();
+            let cell = self.cell_at_cursor();
+            cell.c = c;
+            cell.flags = CellFlags::empty();
+        }
 
-        let cell = self.cell_at_cursor();
-        cell.c = c;
-
+        // 行末処理
         if self.cursor.point.col == self.cols - 1 {
             self.cursor.pending_wrap = true;
         }
         else {
             self.cursor.point.col += 1;
+        }
+    }
+    fn clear_wide_at_cursor(&mut self) {
+        let col = self.cursor.point.col;
+        let row = self.cursor.point.row;
+
+        let flags = self.visible_row(row)[col].flags;
+
+        if flags.contains(CellFlags::WIDE_CHAR) && col + 1 < self.cols {
+            let spacer = &mut self.visible_row_mut(row)[col + 1];
+            spacer.c = ' ';
+            spacer.flags = CellFlags::empty();
+        }
+
+        if flags.contains(CellFlags::WIDE_CHAR_SPACER) && col > 0 {
+            let wide = &mut self.visible_row_mut(row)[col - 1];
+            wide.c = ' ';
+            wide.flags = CellFlags::empty();
         }
     }
 }

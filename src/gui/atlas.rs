@@ -180,7 +180,8 @@ impl GlyphAtlas {
                     rows_per_image: Some(metrics.height as u32),
                 },
                 wgpu::Extent3d {
-                    width: (metrics.width as u32).min(self.cell_width),
+                    width: (metrics.width as u32)
+                        .min(self.cell_width.saturating_sub(dst_x)),
                     height: metrics.height as u32,
                     depth_or_array_layers: 1,
                 },
