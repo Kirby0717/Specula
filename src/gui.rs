@@ -3,7 +3,7 @@ mod renderer;
 mod window;
 
 pub use atlas::GlyphAtlas;
-pub use renderer::GpuContext;
+pub use renderer::{GpuContext, Renderer};
 
 pub fn run_app() -> anyhow::Result<()> {
     let event_loop = winit::event_loop::EventLoop::new()?;

@@ -9,13 +9,13 @@ pub struct GlyphAtlas {
     next_slot: u32,
     font: fontdue::Font,
     px: f32,
-    cell_width: u32,
-    cell_height: u32,
+    pub cell_width: u32,
+    pub cell_height: u32,
     ascent: i32,
-    slots_per_row: u32,
+    pub slots_per_row: u32,
 }
 impl GlyphAtlas {
-    const ATLAS_SIZE: u32 = 1 << 11;
+    pub const ATLAS_SIZE: u32 = 1 << 11;
     pub fn new(gpu: &GpuContext, px: f32) -> Self {
         // フォントの読み込み
         let font_data = std::fs::read("./BizinGothicCCNerdFont-Regular.ttf")

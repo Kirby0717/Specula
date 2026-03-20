@@ -86,6 +86,12 @@ impl Grid {
             cursor: Default::default(),
         }
     }
+    pub fn grid_rows(&self) -> usize {
+        self.rows
+    }
+    pub fn grid_cols(&self) -> usize {
+        self.cols
+    }
     fn clamp_cursor(&mut self) {
         let point = &mut self.cursor.point;
         point.row = point.row.min(self.rows - 1);
