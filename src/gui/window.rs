@@ -110,10 +110,30 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 app.resize(size);
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.state.is_pressed()
-                    && let Some(text) = event.text
-                {
-                    app.terminal.write(text.as_bytes());
+                if event.state.is_pressed() {
+                    use winit::keyboard::*;
+                    // 特殊キー
+                    'a: {
+                        if let Key::Named(named_key) = event.logical_key {
+                            let data = match named_key {
+                                NamedKey::Enter => "\r",
+                                NamedKey::Backspace => "\x7f",
+                                NamedKey::Escape => "\x1b",
+                                NamedKey::Tab => "\t",
+                                NamedKey::ArrowUp => "\x1b[A",
+                                NamedKey::ArrowDown => "\x1b[B",
+                                NamedKey::ArrowRight => "\x1b[C",
+                                NamedKey::ArrowLeft => "\x1b[D",
+                                _ => break 'a,
+                            };
+                            app.terminal.write(data.as_bytes());
+                            return;
+                        }
+                    }
+                    // 通常キー
+                    if let Some(text) = event.text {
+                        app.terminal.write(text.as_bytes());
+                    }
                 }
             }
             _ => {}
