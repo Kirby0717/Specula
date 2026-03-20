@@ -3,3 +3,4 @@ mod grid;
 mod terminal;
 
 pub use grid::Grid;
+pub use terminal::Terminal;

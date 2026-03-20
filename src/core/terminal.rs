@@ -38,7 +38,15 @@ impl TerminalCore {
             write_back: vec![],
         }
     }
-    fn active_grid(&mut self) -> &mut Grid {
+    fn active_grid(&self) -> &Grid {
+        if self.mode.contains(TerminalMode::ALT_SCREEN) {
+            &self.alt_grid
+        }
+        else {
+            &self.grid
+        }
+    }
+    fn active_grid_mut(&mut self) -> &mut Grid {
         if self.mode.contains(TerminalMode::ALT_SCREEN) {
             &mut self.alt_grid
         }
@@ -46,7 +54,7 @@ impl TerminalCore {
             &mut self.grid
         }
     }
-    pub fn dump_visible(&mut self) -> String {
+    pub fn dump_visible(&self) -> String {
         self.active_grid().dump_visible()
     }
 }
@@ -62,11 +70,11 @@ fn param(params: &vte::Params, index: usize, default: usize) -> usize {
 }
 impl vte::Perform for TerminalCore {
     fn print(&mut self, c: char) {
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         grid.write_char(c);
     }
     fn execute(&mut self, byte: u8) {
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match byte {
             // 改行 LF カーソルを1つ下に移動
             0x0A => grid.linefeed(),
@@ -90,7 +98,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match (action, intermediates) {
             // カーソル移動
             ('A', []) => {
@@ -161,7 +169,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
             _ => log::debug!(
@@ -274,6 +282,12 @@ impl Terminal {
     }
     pub fn write(&mut self, data: &[u8]) {
         self.pty.writer.write_all(data).ok();
+    }
+    pub fn grid_rows(&self) -> usize {
+        self.core.active_grid().grid_rows()
+    }
+    pub fn grid_cols(&self) -> usize {
+        self.core.active_grid().grid_cols()
     }
 }
 impl std::fmt::Debug for Terminal {
