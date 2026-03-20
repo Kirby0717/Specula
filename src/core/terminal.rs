@@ -54,9 +54,6 @@ impl TerminalCore {
             &mut self.grid
         }
     }
-    pub fn dump_visible(&self) -> String {
-        self.active_grid().dump_visible()
-    }
 }
 // 最初のパラメータを取り出すヘルパー
 fn param(params: &vte::Params, index: usize, default: usize) -> usize {
@@ -193,6 +190,7 @@ impl Pty {
     pub fn new(
         shell: &str,
         size: portable_pty::PtySize,
+        notify: Box<dyn Fn() + Send>,
     ) -> anyhow::Result<(Self, JoinHandle<()>)> {
         use portable_pty::{CommandBuilder, PtyPair, native_pty_system};
 
@@ -218,6 +216,7 @@ impl Pty {
                             log::error!("ターミナルへの送信エラー : {e}");
                             break;
                         }
+                        notify();
                     }
                     Err(e) => {
                         log::error!("PTYからの受信エラー : {e}");
@@ -256,6 +255,7 @@ impl Terminal {
         cols: usize,
         max_scrollback: usize,
         shell: &str,
+        notify: Box<dyn Fn() + Send>,
     ) -> anyhow::Result<(Self, JoinHandle<()>)> {
         let core = TerminalCore::new(rows, cols, max_scrollback);
         let parser = vte::Parser::new();
@@ -267,6 +267,7 @@ impl Terminal {
                 pixel_width: 1920 / 2,
                 pixel_height: 1080,
             },
+            notify,
         )?;
         Ok((Self { core, parser, pty }, handle))
     }
@@ -288,6 +289,9 @@ impl Terminal {
     }
     pub fn grid_cols(&self) -> usize {
         self.core.active_grid().grid_cols()
+    }
+    pub fn active_grid(&self) -> &Grid {
+        self.core.active_grid()
     }
 }
 impl std::fmt::Debug for Terminal {

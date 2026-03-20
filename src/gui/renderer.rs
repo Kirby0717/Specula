@@ -1,5 +1,5 @@
-use super::atlas::GlyphAtlas;
-use crate::core::Terminal;
+use super::atlas::{GlyphAtlas, GlyphIndex};
+use crate::core::{CellFlags, Terminal};
 
 use std::sync::Arc;
 
@@ -87,10 +87,8 @@ impl Renderer {
     pub fn new(
         gpu: &GpuContext,
         atlas: &GlyphAtlas,
-        //terminal: &Terminal,
+        terminal: &Terminal,
     ) -> Self {
-        let terminal_row = 24;
-        let terminal_col = 80;
         use wgpu::util::DeviceExt as _;
         let device = &gpu.device;
 
@@ -100,20 +98,18 @@ impl Renderer {
             device.create_sampler(&wgpu::SamplerDescriptor::default());
         let cell_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CellBuffer"),
-            size: (terminal_row * terminal_col * size_of::<GpuCell>()) as u64,
-            /*size: (terminal.grid_rows()
-             * terminal.grid_cols()
-             * size_of::<GpuCell>()) as u64,*/
+            size: (terminal.grid_rows()
+                * terminal.grid_cols()
+                * size_of::<GpuCell>()) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let uniform = GridUniform {
             cell_size: [atlas.cell_width as f32, atlas.cell_height as f32],
-            grid_size: [terminal_col as u32, terminal_row as u32],
-            /*grid_size: [
-                terminal.grid_rows() as u32,
+            grid_size: [
                 terminal.grid_cols() as u32,
-            ],*/
+                terminal.grid_rows() as u32,
+            ],
             atlas_size: [
                 GlyphAtlas::ATLAS_SIZE as f32,
                 GlyphAtlas::ATLAS_SIZE as f32,
@@ -206,13 +202,13 @@ impl Renderer {
 
         let pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("SimpleTxtureRnderer PipelineLayout"),
+                label: Some("PipelineLayout"),
                 bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             });
         let render_pipeline = gpu.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("SimpleTxtureRnderer RenderPipeline"),
+                label: Some("RenderPipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
@@ -263,8 +259,8 @@ impl Renderer {
         &self,
         window: &winit::window::Window,
         gpu: &GpuContext,
-        atlas: &GlyphAtlas,
-        //terminal: &Terminal,
+        atlas: &mut GlyphAtlas,
+        terminal: &Terminal,
     ) {
         // スワップチェーンのバックバッファの取得
         let surface_texture = gpu
@@ -304,14 +300,55 @@ impl Renderer {
 
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
-        for y in 0..24 {
-            for x in 0..80 {
+        let grid = terminal.active_grid();
+        for y in 0..grid.grid_rows() {
+            let row = grid.visible_row(y);
+            let mut wide_right = None;
+            for cell in row {
+                // ワイドの左側
+                if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+                    && let Some(index) = wide_right
+                {
+                    cell_buffer.push(GpuCell {
+                        glyph_index: index,
+                        _pad: Default::default(),
+                        fg: [1.0, 1.0, 1.0, 1.0],
+                        bg: [0.1, 0.0, 0.0, 1.0],
+                    });
+                    continue;
+                }
+                wide_right = None;
+                let glyph_index = atlas.get_or_insert(
+                    gpu,
+                    cell.c,
+                    cell.flags.contains(CellFlags::WIDE_CHAR),
+                );
+                let index = match glyph_index {
+                    GlyphIndex::Wide(l, r) => {
+                        wide_right = Some(r);
+                        l
+                    }
+                    GlyphIndex::Narrow(i) => i,
+                };
                 cell_buffer.push(GpuCell {
-                    glyph_index: y * 80 + x,
+                    glyph_index: index,
                     _pad: Default::default(),
                     fg: [1.0, 1.0, 1.0, 1.0],
-                    bg: [0.0, 0.0, 0.0, 1.0],
+                    bg: [0.1, 0.0, 0.0, 1.0],
                 });
+            }
+        }
+        if false {
+            cell_buffer.clear();
+            for y in 0..grid.grid_rows() {
+                for x in 0..grid.grid_cols() {
+                    cell_buffer.push(GpuCell {
+                        glyph_index: (y * grid.grid_cols() + x) as u32,
+                        _pad: Default::default(),
+                        fg: [1.0, 1.0, 1.0, 1.0],
+                        bg: [0.1, 0.0, 0.0, 1.0],
+                    });
+                }
             }
         }
         gpu.queue.write_buffer(

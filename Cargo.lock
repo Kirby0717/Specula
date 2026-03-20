@@ -1658,6 +1658,7 @@ dependencies = [
  "pollster",
  "portable-pty",
  "simplelog",
+ "unicode-width",
  "vte",
  "wgpu",
  "winit",

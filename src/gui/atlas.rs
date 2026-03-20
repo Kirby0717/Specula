@@ -2,10 +2,15 @@ use super::GpuContext;
 
 use std::collections::HashMap;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GlyphIndex {
+    Wide(u32, u32),
+    Narrow(u32),
+}
 pub struct GlyphAtlas {
     texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    cache: HashMap<char, u32>,
+    cache: HashMap<char, GlyphIndex>,
     next_slot: u32,
     font: fontdue::Font,
     px: f32,
@@ -66,7 +71,12 @@ impl GlyphAtlas {
             slots_per_row,
         }
     }
-    pub fn get_or_insert(&mut self, gpu: &GpuContext, c: char) -> u32 {
+    pub fn get_or_insert(
+        &mut self,
+        gpu: &GpuContext,
+        c: char,
+        is_wide: bool,
+    ) -> GlyphIndex {
         if let Some(index) = self.cache.get(&c) {
             return *index;
         }
@@ -79,7 +89,6 @@ impl GlyphAtlas {
 
         // アトラスへ書き込み
         // TODO: 上書き時の前のデータの消去
-        let is_wide = metrics.advance_width > self.cell_width as f32 * 1.5;
         if is_wide {
             let slot_left = self.next_slot;
             self.next_slot += 1;
@@ -144,8 +153,9 @@ impl GlyphAtlas {
                 );
             }
 
-            self.cache.insert(c, slot_left);
-            slot_left
+            let index = GlyphIndex::Wide(slot_left, slot_right);
+            self.cache.insert(c, index);
+            index
         }
         else {
             let slot = self.next_slot;
@@ -170,14 +180,16 @@ impl GlyphAtlas {
                     rows_per_image: Some(metrics.height as u32),
                 },
                 wgpu::Extent3d {
-                    width: metrics.width as u32,
+                    width: (metrics.width as u32)
+                        .min(self.cell_width.saturating_sub(dst_x)),
                     height: metrics.height as u32,
                     depth_or_array_layers: 1,
                 },
             );
 
-            self.cache.insert(c, slot);
-            slot
+            let index = GlyphIndex::Narrow(slot);
+            self.cache.insert(c, index);
+            index
         }
     }
     fn slot_origin(&self, slot: u32) -> (u32, u32) {
