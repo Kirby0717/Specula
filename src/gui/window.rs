@@ -6,53 +6,6 @@ use winit::{
     application::ApplicationHandler, event::WindowEvent, window::Window,
 };
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 2],
-    uv: [f32; 2],
-}
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-1.0, 1.0],
-        uv: [0.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, 1.0],
-        uv: [1.0, 0.0],
-    },
-    Vertex {
-        position: [-1.0, -1.0],
-        uv: [0.0, 1.0],
-    },
-    Vertex {
-        position: [1.0, 1.0],
-        uv: [1.0, 0.0],
-    },
-    Vertex {
-        position: [1.0, -1.0],
-        uv: [1.0, 1.0],
-    },
-    Vertex {
-        position: [-1.0, -1.0],
-        uv: [0.0, 1.0],
-    },
-];
-
 struct App {
     window: Arc<Window>,
     gpu: GpuContext,
@@ -98,8 +51,8 @@ impl ApplicationHandler for AppHandler {
         let window_attributes = Window::default_attributes()
             .with_title("test")
             .with_inner_size(winit::dpi::PhysicalSize {
-                width: 1024,
-                height: 1024,
+                width: 1920,
+                height: 1080,
             });
         let window = event_loop
             .create_window(window_attributes)

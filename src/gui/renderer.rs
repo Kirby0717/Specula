@@ -89,7 +89,8 @@ impl Renderer {
         atlas: &GlyphAtlas,
         //terminal: &Terminal,
     ) -> Self {
-        let terminal_size = 32;
+        let terminal_row = 24;
+        let terminal_col = 80;
         use wgpu::util::DeviceExt as _;
         let device = &gpu.device;
 
@@ -99,7 +100,7 @@ impl Renderer {
             device.create_sampler(&wgpu::SamplerDescriptor::default());
         let cell_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CellBuffer"),
-            size: (terminal_size * terminal_size * size_of::<GpuCell>()) as u64,
+            size: (terminal_row * terminal_col * size_of::<GpuCell>()) as u64,
             /*size: (terminal.grid_rows()
              * terminal.grid_cols()
              * size_of::<GpuCell>()) as u64,*/
@@ -108,7 +109,7 @@ impl Renderer {
         });
         let uniform = GridUniform {
             cell_size: [atlas.cell_width as f32, atlas.cell_height as f32],
-            grid_size: [terminal_size as u32, terminal_size as u32],
+            grid_size: [terminal_col as u32, terminal_row as u32],
             /*grid_size: [
                 terminal.grid_rows() as u32,
                 terminal.grid_cols() as u32,
@@ -303,13 +304,13 @@ impl Renderer {
 
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
-        for y in 0..32 {
-            for x in 0..32 {
+        for y in 0..24 {
+            for x in 0..80 {
                 cell_buffer.push(GpuCell {
-                    glyph_index: 0,
+                    glyph_index: y * 80 + x,
                     _pad: Default::default(),
-                    fg: [0.0; 4],
-                    bg: [0.0; 4],
+                    fg: [1.0, 1.0, 1.0, 1.0],
+                    bg: [0.0, 0.0, 0.0, 1.0],
                 });
             }
         }
