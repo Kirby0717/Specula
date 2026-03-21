@@ -31,7 +31,14 @@ impl GpuContext {
         let size = window.inner_size();
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
-        let surface_format = cap.formats[0];
+        let surface_format = if let Some(f) =
+            cap.formats.iter().find(|format| format.is_srgb())
+        {
+            *f
+        }
+        else {
+            cap.formats[0]
+        };
 
         GpuContext {
             device,
@@ -369,6 +376,8 @@ impl Renderer {
             let row = grid.visible_row(y);
             let mut wide_right = None;
             for (x, cell) in row.iter().enumerate() {
+                let fg = cell.fg.color_to_rgba();
+                let bg = cell.bg.color_to_rgba();
                 if cursor.point.row == y && cursor.point.col == x {
                     let GlyphIndex::Narrow(glyph_index) =
                         atlas.get_or_insert(gpu, ' ', false)
@@ -378,8 +387,8 @@ impl Renderer {
                     cell_buffer.push(GpuCell {
                         glyph_index,
                         _pad: Default::default(),
-                        fg: [1.0, 1.0, 1.0, 1.0],
-                        bg: [0.0, 1.0, 0.0, 1.0],
+                        fg,
+                        bg,
                     });
                     continue;
                 }
@@ -391,8 +400,8 @@ impl Renderer {
                     cell_buffer.push(GpuCell {
                         glyph_index: index,
                         _pad: Default::default(),
-                        fg: [1.0, 1.0, 1.0, 1.0],
-                        bg: [0.0, 0.0, 0.0, 1.0],
+                        fg,
+                        bg,
                     });
                     continue;
                 }
@@ -412,8 +421,8 @@ impl Renderer {
                 cell_buffer.push(GpuCell {
                     glyph_index: index,
                     _pad: Default::default(),
-                    fg: [1.0, 1.0, 1.0, 1.0],
-                    bg: [0.0, 0.0, 0.0, 1.0],
+                    fg,
+                    bg,
                 });
             }
         }

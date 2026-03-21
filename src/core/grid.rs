@@ -130,6 +130,12 @@ impl Grid {
     pub fn cursor(&self) -> &CursorState {
         &self.cursor
     }
+    pub fn cursor_template(&self) -> &Cell {
+        &self.cursor.template
+    }
+    pub fn cursor_template_mut(&mut self) -> &mut Cell {
+        &mut self.cursor.template
+    }
     pub fn cursor_up(&mut self, n: usize) {
         self.cursor.point.row = self.cursor.point.row.wrapping_sub(n);
         self.cursor.pending_wrap = false;
@@ -165,28 +171,32 @@ impl Grid {
     // 1: カーソル以上を消去
     // 2: 画面全体を消去
     pub fn erase_display(&mut self, mode: usize) {
+        let cell = Cell {
+            bg: self.cursor_template().bg,
+            ..Default::default()
+        };
         let row = self.cursor.point.row;
         let col = self.cursor.point.col;
         match mode {
             0 => {
                 // カーソルの右側
-                self.visible_row_mut(row)[col..].fill(Cell::default());
+                self.visible_row_mut(row)[col..].fill(cell);
                 // カーソルの下側
                 for row in row + 1..self.rows {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             1 => {
                 // カーソルの左側
-                self.visible_row_mut(row)[..=col].fill(Cell::default());
+                self.visible_row_mut(row)[..=col].fill(cell);
                 // カーソルの上側
                 for row in 0..row {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             2 => {
                 for row in 0..self.rows {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             _ => log::debug!("未対応の画面消去モード: {}", mode),
@@ -196,12 +206,16 @@ impl Grid {
     // 1: カーソル以上を消去
     // 2: 行全体を消去
     pub fn erase_row(&mut self, mode: usize) {
+        let cell = Cell {
+            bg: self.cursor_template().bg,
+            ..Default::default()
+        };
         let col = self.cursor.point.col;
         let row = self.visible_row_mut(self.cursor.point.row);
         match mode {
-            0 => row[col..].fill(Cell::default()),
-            1 => row[..=col].fill(Cell::default()),
-            2 => row.fill(Cell::default()),
+            0 => row[col..].fill(cell),
+            1 => row[..=col].fill(cell),
+            2 => row.fill(cell),
             _ => log::debug!("未対応の行消去モード: {}", mode),
         }
     }
@@ -288,6 +302,8 @@ impl Grid {
             return;
         }
 
+        let template = *self.cursor_template();
+
         // 折り返し処理
         if self.cursor.pending_wrap {
             let cell = self.cell_at_cursor();
@@ -301,18 +317,20 @@ impl Grid {
             // 入らなければ改行
             if self.cols - 1 <= self.cursor.point.col {
                 let cell = self.cell_at_cursor();
+                *cell = template;
                 cell.c = ' ';
-                cell.flags = CellFlags::empty();
                 self.linefeed();
                 self.carriage_return();
             }
 
             self.clear_wide_at_cursor();
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = c;
             cell.flags = CellFlags::WIDE_CHAR;
             self.cursor_right(1);
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = ' ';
             cell.flags = CellFlags::WIDE_CHAR_SPACER;
         }
@@ -320,6 +338,7 @@ impl Grid {
         else {
             self.clear_wide_at_cursor();
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = c;
             cell.flags = CellFlags::empty();
         }

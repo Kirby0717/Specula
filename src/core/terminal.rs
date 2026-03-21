@@ -157,10 +157,74 @@ impl vte::Perform for TerminalCore {
                 }
             }
 
+            // SGR
+            ('m', []) => {
+                use super::cell::*;
+
+                let template = grid.cursor_template_mut();
+                if params.is_empty() {
+                    *template = Cell::default();
+                    return;
+                }
+
+                for subparam in params {
+                    let code = subparam[0] as usize;
+                    match code {
+                        // リセット
+                        0 => {
+                            *template = Cell::default();
+                        }
+                        // 太字
+                        1 => {
+                            template.flags.insert(CellFlags::BOLD);
+                        }
+                        // 前景色
+                        30..=37 => {
+                            template.fg = Color::Named(unsafe {
+                                std::mem::transmute::<u8, NamedColor>(
+                                    code as u8 - 30,
+                                )
+                            });
+                        }
+                        // 背景色
+                        40..=47 => {
+                            template.bg = Color::Named(unsafe {
+                                std::mem::transmute::<u8, NamedColor>(
+                                    code as u8 - 40,
+                                )
+                            });
+                        }
+                        // 高輝度前景色
+                        90..=97 => {
+                            template.fg = Color::Named(unsafe {
+                                std::mem::transmute::<u8, NamedColor>(
+                                    code as u8 - 90 + 8,
+                                )
+                            });
+                        }
+                        // 高輝度前景色
+                        100..=107 => {
+                            template.bg = Color::Named(unsafe {
+                                std::mem::transmute::<u8, NamedColor>(
+                                    code as u8 - 100 + 8,
+                                )
+                            });
+                        }
+                        // デフォルト前景色
+                        39 => {
+                            template.fg = Color::Named(NamedColor::Foreground)
+                        }
+                        // デフォルト背景色
+                        49 => {
+                            template.bg = Color::Named(NamedColor::Background)
+                        }
+                        _ => log::debug!("未対応 SGR: code={code}",),
+                    }
+                }
+            }
+
             _ => log::debug!(
-                "未対応 CSI: action='{}', intermediates={:?}",
-                action,
-                intermediates
+                "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
         }
     }
@@ -172,9 +236,7 @@ impl vte::Perform for TerminalCore {
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
             _ => log::debug!(
-                "未対応 ESC: byte='{}', intermediates={:?}",
-                byte,
-                intermediates
+                "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
         }
     }
