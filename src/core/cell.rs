@@ -100,6 +100,16 @@ pub enum Color {
     Indexed(u8),       // 256色パレット（0〜255）
     Rgb(u8, u8, u8),   // True Color（24bit）
 }
+impl Color {
+    pub fn color_to_rgba(self) -> [f32; 4] {
+        let [r, g, b] = match self {
+            Color::Named(named) => named.into_color(),
+            Color::Indexed(_i) => todo!(), // 2-Aで実装
+            Color::Rgb(r, g, b) => [r, g, b],
+        };
+        [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cell {
