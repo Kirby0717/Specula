@@ -280,16 +280,6 @@ impl Grid {
             self.buffer.len() - self.rows - self.viewport_offset + row;
         &self.buffer[buffer_index].inner
     }
-    pub fn viewport_row_mut(&mut self, row: usize) -> &mut [Cell] {
-        debug_assert!(
-            row < self.rows,
-            "指定された行数({row})が0～{}の範囲外です",
-            self.rows
-        );
-        let buffer_index =
-            self.buffer.len() - self.rows - self.viewport_offset + row;
-        &mut self.buffer[buffer_index].inner
-    }
     pub fn scroll(&mut self, lines: isize) {
         self.viewport_offset = self
             .viewport_offset
