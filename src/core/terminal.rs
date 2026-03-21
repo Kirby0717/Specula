@@ -16,7 +16,9 @@ bitflags::bitflags! {
         const ALT_SCREEN       = 1 << 0;   // ESC[?1049h/l
         // コピペの目印
         const BRACKETED_PASTE  = 1 << 1;   // ESC[?2004h/l
-        // 今後追加: マウスレポート、カーソル非表示 等
+        // カーソル表示
+        const CURSOR_VISIBLE   = 1 << 2;   // ESC[?23h/l
+        // 今後追加: マウスレポート 等
     }
 }
 
@@ -35,7 +37,7 @@ impl TerminalCore {
     pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
         Self {
             grid: Grid::new(rows, cols, max_scrollback),
-            alt_grid: Grid::new(rows, cols, max_scrollback),
+            alt_grid: Grid::new(rows, cols, 0),
             mode: TerminalMode::empty(),
             write_back: vec![],
         }
@@ -58,6 +60,23 @@ impl TerminalCore {
         }
         else {
             &mut self.grid
+        }
+    }
+    fn set_dec_mode(&mut self, mode: usize, enable: bool) {
+        match mode {
+            // オルタネートスクリーン
+            1049 => {
+                self.mode.set(TerminalMode::ALT_SCREEN, enable);
+                if enable {
+                    self.alt_grid.clear();
+                }
+            }
+            2004 => { /* ブラケットペースト */ }
+            // カーソル表示/非表示
+            25 => {
+                self.mode.set(TerminalMode::CURSOR_VISIBLE, enable);
+            }
+            _ => log::debug!("未対応 DEC mode: {mode}"),
         }
     }
 }
@@ -248,6 +267,18 @@ impl vte::Perform for TerminalCore {
             // SGR
             ('m', []) => {
                 handle_sgr(grid.cursor_template_mut(), params);
+            }
+
+            // オルタネートスクリーン
+            ('h', [b'?']) => {
+                for p in params.iter() {
+                    self.set_dec_mode(p[0] as usize, true);
+                }
+            }
+            ('l', [b'?']) => {
+                for p in params.iter() {
+                    self.set_dec_mode(p[0] as usize, false);
+                }
             }
 
             _ => log::debug!(
