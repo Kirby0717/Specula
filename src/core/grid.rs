@@ -131,28 +131,35 @@ impl Grid {
         &self.cursor
     }
     pub fn cursor_up(&mut self, n: usize) {
-        self.cursor.point.row += n;
-        self.clamp_cursor();
+        self.cursor.point.row = self.cursor.point.row.wrapping_sub(n);
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_down(&mut self, n: usize) {
-        self.cursor.point.row = self.cursor.point.row.wrapping_sub(n);
+        self.cursor.point.row += n;
+        self.clamp_cursor();
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_right(&mut self, n: usize) {
         self.cursor.point.col += n;
         self.clamp_cursor();
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_left(&mut self, n: usize) {
         self.cursor.point.col = self.cursor.point.col.wrapping_sub(n);
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto(&mut self, row: usize, col: usize) {
         self.cursor.point.row = row;
         self.cursor.point.col = col;
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto_row(&mut self, row: usize) {
         self.cursor.point.row = row;
+        self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto_col(&mut self, col: usize) {
         self.cursor.point.col = col;
+        self.cursor.pending_wrap = false;
     }
     // 0: カーソル以下を消去
     // 1: カーソル以上を消去

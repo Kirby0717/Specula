@@ -5,7 +5,7 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use winit::{
     application::ApplicationHandler,
-    event::{Modifiers, WindowEvent},
+    event::{Ime, Modifiers, WindowEvent},
     event_loop::EventLoopProxy,
     window::Window,
 };
@@ -86,7 +86,7 @@ impl AppHandler {
 impl ApplicationHandler<TermEvent> for AppHandler {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window_attributes = Window::default_attributes()
-            .with_title("test")
+            .with_title("Specula")
             .with_inner_size(winit::dpi::PhysicalSize {
                 width: 1920,
                 height: 1080,
@@ -94,6 +94,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
         let window = event_loop
             .create_window(window_attributes)
             .expect("ウィンドウの作成に失敗しました");
+        window.set_ime_allowed(true);
         self.app = Some(App::new(window, &self.proxy));
     }
     fn window_event(
@@ -121,6 +122,17 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             }
             WindowEvent::Resized(size) => {
                 app.resize(size);
+            }
+            WindowEvent::Ime(ime) => {
+                match ime {
+                    Ime::Commit(text) => {
+                        app.terminal.write(text.as_bytes());
+                    }
+                    Ime::Preedit(_text, _cursor) => {
+                        // TODO: プレビュー表示
+                    }
+                    _ => {}
+                }
             }
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 app.modifiers = new_modifiers;
