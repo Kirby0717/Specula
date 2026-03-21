@@ -23,46 +23,47 @@ pub enum NamedColor {
     Foreground = 16,
     Background = 17,
 }
+static PALETTE: [[u8; 3]; 18] = [
+    // Black
+    [0, 0, 0],
+    // Red
+    [205, 0, 0],
+    // Green
+    [0, 205, 0],
+    // Yellow
+    [205, 205, 0],
+    // Blue
+    [0, 0, 238],
+    // Magenta
+    [205, 0, 205],
+    // Cyan
+    [0, 205, 205],
+    // White
+    [229, 229, 229],
+    // BrightBlack
+    [127, 127, 127],
+    // BrightRed
+    [255, 0, 0],
+    // BrightGreen
+    [0, 255, 0],
+    // BrightYellow
+    [255, 255, 0],
+    // BrightBlue
+    [92, 92, 255],
+    // BrightMagenta
+    [255, 0, 255],
+    // BrightCyan
+    [0, 255, 255],
+    // BrightWhite
+    [255, 255, 255],
+    // Foreground
+    [229, 229, 229],
+    // Background
+    [0, 0, 0],
+];
 impl NamedColor {
     pub fn into_color(self) -> [u8; 3] {
-        [
-            // Black
-            [0, 0, 0],
-            // Red
-            [205, 0, 0],
-            // Green
-            [0, 205, 0],
-            // Yellow
-            [205, 205, 0],
-            // Blue
-            [0, 0, 238],
-            // Magenta
-            [205, 0, 205],
-            // Cyan
-            [0, 205, 205],
-            // White
-            [229, 229, 229],
-            // BrightBlack
-            [127, 127, 127],
-            // BrightRed
-            [255, 0, 0],
-            // BrightGreen
-            [0, 255, 0],
-            // BrightYellow
-            [255, 255, 0],
-            // BrightBlue
-            [92, 92, 255],
-            // BrightMagenta
-            [255, 0, 255],
-            // BrightCyan
-            [0, 255, 255],
-            // BrightWhite
-            [255, 255, 255],
-            // Foreground
-            [229, 229, 229],
-            // Background
-            [0, 0, 0],
-        ][unsafe { std::mem::transmute::<NamedColor, u8>(self) as usize }]
+        PALETTE[unsafe { std::mem::transmute::<NamedColor, u8>(self) as usize }]
     }
 }
 
@@ -104,7 +105,29 @@ impl Color {
     pub fn color_to_rgba(self) -> [f32; 4] {
         let [r, g, b] = match self {
             Color::Named(named) => named.into_color(),
-            Color::Indexed(_i) => todo!(), // 2-Aで実装
+            Color::Indexed(index) => {
+                match index {
+                    // ANSI 16色
+                    0..16 => PALETTE[index as usize],
+                    // 6x6x6 カラーキューブ
+                    16..232 => {
+                        let n = index - 16;
+                        let r = n / 36;
+                        let g = (n % 36) / 6;
+                        let b = n % 6;
+                        fn cube_component(v: u8) -> u8 {
+                            if v == 0 { 0 } else { 55 + 40 * v }
+                        }
+                        [
+                            cube_component(r),
+                            cube_component(g),
+                            cube_component(b),
+                        ]
+                    }
+                    // 24段階グレースケール
+                    232..=255 => [8 + 10 * (index - 232); 3],
+                }
+            }
             Color::Rgb(r, g, b) => [r, g, b],
         };
         [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
