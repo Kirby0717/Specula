@@ -86,6 +86,36 @@ impl Grid {
             cursor: Default::default(),
         }
     }
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        let rows = rows.max(Self::MIN_ROWS);
+        let cols = cols.max(Self::MIN_COLS);
+        if rows != self.rows {
+            if self.rows < rows {
+                for _ in 0..(rows - self.rows) {
+                    self.buffer.push_back(Row::new(cols));
+                }
+            }
+            else {
+                let delete = self.rows - rows;
+                for _ in 0..delete {
+                    self.buffer.pop_back();
+                }
+            }
+            self.rows = rows;
+        }
+        if cols != self.cols {
+            for y in 0..rows {
+                let buffer_index = self.buffer.len() - rows + y;
+                self.buffer[buffer_index]
+                    .inner
+                    .resize(cols, Cell::default());
+            }
+            self.cols = cols;
+        }
+
+        self.clamp_cursor();
+        self.cursor.pending_wrap = false;
+    }
     pub fn grid_rows(&self) -> usize {
         self.rows
     }
@@ -239,7 +269,7 @@ impl Grid {
     }
     fn add_row(&mut self) {
         self.buffer.push_back(Row::new(self.cols));
-        if self.max_scrollback + self.cols <= self.buffer.len() {
+        if self.max_scrollback + self.rows <= self.buffer.len() {
             self.buffer.pop_front();
         }
     }

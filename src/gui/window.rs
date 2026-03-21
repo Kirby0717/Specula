@@ -39,7 +39,7 @@ impl App {
             rows as usize,
             cols as usize,
             1_000_000,
-            "bash",
+            "nu",
             notify,
         )
         .expect("ターミナルの起動に失敗しました");
@@ -58,6 +58,12 @@ impl App {
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         self.gpu.size = new_size;
         self.gpu.configure_surface();
+
+        let rows = (new_size.height / self.atlas.cell_height) as usize;
+        let cols = (new_size.width / self.atlas.cell_width) as usize;
+
+        self.terminal.resize(rows, cols);
+        self.renderer.resize(&self.gpu, rows, cols);
     }
 }
 

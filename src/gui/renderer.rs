@@ -81,6 +81,7 @@ pub struct Renderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
     cell_buffer: wgpu::Buffer,
+    uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
 }
 impl Renderer {
@@ -252,8 +253,29 @@ impl Renderer {
             render_pipeline,
             bind_group,
             cell_buffer,
+            uniform,
             uniform_buffer,
         }
+    }
+    pub fn resize(&mut self, gpu: &GpuContext, rows: usize, cols: usize) {
+        let need_buffer_size = (rows * cols * size_of::<GpuCell>()) as u64;
+        if self.cell_buffer.size() < need_buffer_size {
+            self.cell_buffer =
+                gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("CellBuffer"),
+                    size: need_buffer_size,
+                    usage: wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+        }
+
+        self.uniform.grid_size = [cols as u32, rows as u32];
+        gpu.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&self.uniform),
+        );
     }
     pub fn render(
         &self,
@@ -301,10 +323,26 @@ impl Renderer {
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
         let grid = terminal.active_grid();
+        let cursor = terminal.cursor();
         for y in 0..grid.grid_rows() {
             let row = grid.visible_row(y);
             let mut wide_right = None;
-            for cell in row {
+            for (x, cell) in row.iter().enumerate() {
+                if cursor.point.row == y && cursor.point.col == x {
+                    let GlyphIndex::Narrow(glyph_index) =
+                        atlas.get_or_insert(gpu, ' ', false)
+                    else {
+                        unreachable!()
+                    };
+                    cell_buffer.push(GpuCell {
+                        glyph_index,
+                        _pad: Default::default(),
+                        fg: [1.0, 1.0, 1.0, 1.0],
+                        bg: [0.0, 1.0, 0.0, 1.0],
+                    });
+                    continue;
+                }
+
                 // ワイドの左側
                 if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
                     && let Some(index) = wide_right
@@ -313,7 +351,7 @@ impl Renderer {
                         glyph_index: index,
                         _pad: Default::default(),
                         fg: [1.0, 1.0, 1.0, 1.0],
-                        bg: [0.1, 0.0, 0.0, 1.0],
+                        bg: [0.0, 0.0, 0.0, 1.0],
                     });
                     continue;
                 }
@@ -334,21 +372,8 @@ impl Renderer {
                     glyph_index: index,
                     _pad: Default::default(),
                     fg: [1.0, 1.0, 1.0, 1.0],
-                    bg: [0.1, 0.0, 0.0, 1.0],
+                    bg: [0.0, 0.0, 0.0, 1.0],
                 });
-            }
-        }
-        if false {
-            cell_buffer.clear();
-            for y in 0..grid.grid_rows() {
-                for x in 0..grid.grid_cols() {
-                    cell_buffer.push(GpuCell {
-                        glyph_index: (y * grid.grid_cols() + x) as u32,
-                        _pad: Default::default(),
-                        fg: [1.0, 1.0, 1.0, 1.0],
-                        bg: [0.1, 0.0, 0.0, 1.0],
-                    });
-                }
             }
         }
         gpu.queue.write_buffer(
