@@ -52,7 +52,7 @@ pub struct Grid {
     /// スクロールバックの最大行数
     max_scrollback: usize,
     /// 現在のスクロール表示オフセット（0 = 最下部）
-    display_offset: usize,
+    viewport_offset: usize,
     /// カーソル
     /// 画面上の相対位置で、画面外に出ない
     cursor: CursorState,
@@ -82,7 +82,7 @@ impl Grid {
             rows,
             cols,
             max_scrollback,
-            display_offset: 0,
+            viewport_offset: 0,
             cursor: Default::default(),
         }
     }
@@ -180,23 +180,23 @@ impl Grid {
         match mode {
             0 => {
                 // カーソルの右側
-                self.visible_row_mut(row)[col..].fill(cell);
+                self.screen_row_mut(row)[col..].fill(cell);
                 // カーソルの下側
                 for row in row + 1..self.rows {
-                    self.visible_row_mut(row).fill(cell);
+                    self.screen_row_mut(row).fill(cell);
                 }
             }
             1 => {
                 // カーソルの左側
-                self.visible_row_mut(row)[..=col].fill(cell);
+                self.screen_row_mut(row)[..=col].fill(cell);
                 // カーソルの上側
                 for row in 0..row {
-                    self.visible_row_mut(row).fill(cell);
+                    self.screen_row_mut(row).fill(cell);
                 }
             }
             2 => {
                 for row in 0..self.rows {
-                    self.visible_row_mut(row).fill(cell);
+                    self.screen_row_mut(row).fill(cell);
                 }
             }
             _ => log::debug!("未対応の画面消去モード: {}", mode),
@@ -211,7 +211,7 @@ impl Grid {
             ..Default::default()
         };
         let col = self.cursor.point.col;
-        let row = self.visible_row_mut(self.cursor.point.row);
+        let row = self.screen_row_mut(self.cursor.point.row);
         match mode {
             0 => row[col..].fill(cell),
             1 => row[..=col].fill(cell),
@@ -252,7 +252,7 @@ impl Grid {
             self.buffer.insert(insert_idx, Row::new(self.cols));
         }
     }
-    pub fn visible_row(&self, row: usize) -> &[Cell] {
+    pub fn screen_row(&self, row: usize) -> &[Cell] {
         debug_assert!(
             row < self.rows,
             "指定された行数({row})が0～{}の範囲外です",
@@ -261,7 +261,7 @@ impl Grid {
         let buffer_index = self.buffer.len() - self.rows + row;
         &self.buffer[buffer_index].inner
     }
-    fn visible_row_mut(&mut self, row: usize) -> &mut [Cell] {
+    pub fn screen_row_mut(&mut self, row: usize) -> &mut [Cell] {
         debug_assert!(
             row < self.rows,
             "指定された行数({row})が0～{}の範囲外です",
@@ -269,6 +269,41 @@ impl Grid {
         );
         let buffer_index = self.buffer.len() - self.rows + row;
         &mut self.buffer[buffer_index].inner
+    }
+    pub fn viewport_row(&self, row: usize) -> &[Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
+        let buffer_index =
+            self.buffer.len() - self.rows - self.viewport_offset + row;
+        &self.buffer[buffer_index].inner
+    }
+    pub fn viewport_row_mut(&mut self, row: usize) -> &mut [Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
+        let buffer_index =
+            self.buffer.len() - self.rows - self.viewport_offset + row;
+        &mut self.buffer[buffer_index].inner
+    }
+    pub fn scroll(&mut self, lines: isize) {
+        self.viewport_offset = self
+            .viewport_offset
+            .saturating_add_signed(lines)
+            .min(self.scrollback_len());
+    }
+    pub fn scroll_to_bottom(&mut self) {
+        self.viewport_offset = 0;
+    }
+    fn scrollback_len(&self) -> usize {
+        self.buffer.len() - self.rows
+    }
+    pub fn is_scrollback(&self) -> bool {
+        self.viewport_offset != 0
     }
     fn cell_at_cursor(&mut self) -> &mut Cell {
         // 本来なら起こらない
@@ -286,7 +321,7 @@ impl Grid {
         }
 
         let Point { row, col } = self.cursor.point;
-        &mut self.visible_row_mut(row)[col]
+        &mut self.screen_row_mut(row)[col]
     }
     fn add_row(&mut self) {
         self.buffer.push_back(Row::new(self.cols));
@@ -295,7 +330,7 @@ impl Grid {
         }
     }
     pub fn write_char(&mut self, c: char) {
-        self.display_offset = 0;
+        self.viewport_offset = 0;
 
         let width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
         if width == 0 {
@@ -355,16 +390,16 @@ impl Grid {
         let col = self.cursor.point.col;
         let row = self.cursor.point.row;
 
-        let flags = self.visible_row(row)[col].flags;
+        let flags = self.screen_row(row)[col].flags;
 
         if flags.contains(CellFlags::WIDE_CHAR) && col + 1 < self.cols {
-            let spacer = &mut self.visible_row_mut(row)[col + 1];
+            let spacer = &mut self.screen_row_mut(row)[col + 1];
             spacer.c = ' ';
             spacer.flags = CellFlags::empty();
         }
 
         if flags.contains(CellFlags::WIDE_CHAR_SPACER) && col > 0 {
-            let wide = &mut self.visible_row_mut(row)[col - 1];
+            let wide = &mut self.screen_row_mut(row)[col - 1];
             wide.c = ' ';
             wide.flags = CellFlags::empty();
         }

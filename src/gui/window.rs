@@ -143,6 +143,16 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 app.modifiers = new_modifiers;
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                use winit::event::*;
+                let MouseScrollDelta::LineDelta(_, delta) = delta
+                else {
+                    return;
+                };
+
+                app.terminal.scroll((delta * 3.0) as isize);
+                app.window.request_redraw();
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state.is_pressed() {
                     use winit::keyboard::*;
