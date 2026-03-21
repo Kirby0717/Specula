@@ -3,7 +3,6 @@ use super::grid::{CursorState, Grid};
 use std::{
     io::{Read, Write},
     sync::mpsc,
-    thread::JoinHandle,
 };
 
 bitflags::bitflags! {
@@ -95,7 +94,6 @@ impl vte::Perform for TerminalCore {
         ignore: bool,
         action: char,
     ) {
-        let p: Vec<Vec<u16>> = params.iter().map(|s| s.to_vec()).collect();
         if ignore {
             return;
         }
@@ -186,7 +184,6 @@ pub struct Pty {
     #[allow(unused)]
     master: Box<dyn portable_pty::MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    shell: Box<dyn portable_pty::Child + Send + Sync>,
     // PTYからの出力が送られてくる
     pty_rx: mpsc::Receiver<Vec<u8>>,
 }
@@ -195,21 +192,22 @@ impl Pty {
         shell: &str,
         size: portable_pty::PtySize,
         notify: Box<dyn Fn() + Send>,
-    ) -> anyhow::Result<(Self, JoinHandle<()>)> {
+        on_exit: Box<dyn FnOnce() + Send>,
+    ) -> anyhow::Result<Self> {
         use portable_pty::{CommandBuilder, PtyPair, native_pty_system};
 
         let system = native_pty_system();
         let PtyPair { slave, master } = system.openpty(size)?;
 
         let cmd = CommandBuilder::new(shell);
-        let shell = slave.spawn_command(cmd)?;
+        let mut shell = slave.spawn_command(cmd)?;
 
         let reader = master.try_clone_reader()?;
         let writer = master.take_writer()?;
 
         let (tx, rx) = mpsc::channel();
 
-        let handle = std::thread::spawn(move || {
+        std::thread::spawn(move || {
             let mut reader = reader;
             let mut buf = [0; 1 << 12];
             loop {
@@ -228,17 +226,19 @@ impl Pty {
                     }
                 }
             }
+            notify();
         });
 
-        Ok((
-            Self {
-                master,
-                writer,
-                shell,
-                pty_rx: rx,
-            },
-            handle,
-        ))
+        std::thread::spawn(move || {
+            let _ = shell.wait();
+            on_exit();
+        });
+
+        Ok(Self {
+            master,
+            writer,
+            pty_rx: rx,
+        })
     }
     pub fn resize(&mut self, rows: u16, cols: u16) {
         if let Ok(size) = self.master.get_size()
@@ -255,9 +255,6 @@ impl Pty {
                 pixel_height: 0,
             })
             .ok();
-    }
-    pub fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
-        self.shell.wait()
     }
 }
 
@@ -276,10 +273,11 @@ impl Terminal {
         max_scrollback: usize,
         shell: &str,
         notify: Box<dyn Fn() + Send>,
-    ) -> anyhow::Result<(Self, JoinHandle<()>)> {
+        on_exit: Box<dyn FnOnce() + Send>,
+    ) -> anyhow::Result<Self> {
         let core = TerminalCore::new(rows, cols, max_scrollback);
         let parser = vte::Parser::new();
-        let (pty, handle) = Pty::new(
+        let pty = Pty::new(
             shell,
             portable_pty::PtySize {
                 rows: rows as u16,
@@ -288,8 +286,9 @@ impl Terminal {
                 pixel_height: 1080,
             },
             notify,
+            on_exit,
         )?;
-        Ok((Self { core, parser, pty }, handle))
+        Ok(Self { core, parser, pty })
     }
     /// チャネルに溜まったデータを処理する（メインスレッドから呼ぶ）
     pub fn process_pty_output(&mut self) {

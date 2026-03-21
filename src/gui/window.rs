@@ -1,7 +1,7 @@
 use super::{GlyphAtlas, GpuContext, Renderer};
 use crate::core::Terminal;
 
-use std::{sync::Arc, thread::JoinHandle};
+use std::sync::Arc;
 
 use winit::{
     application::ApplicationHandler,
@@ -12,6 +12,7 @@ use winit::{
 
 pub enum TermEvent {
     PtyOutput,
+    PtyExit,
 }
 
 struct App {
@@ -20,7 +21,6 @@ struct App {
     atlas: GlyphAtlas,
     renderer: Renderer,
     terminal: Terminal,
-    pty_handle: JoinHandle<()>,
 
     modifiers: Modifiers,
 }
@@ -35,17 +35,24 @@ impl App {
         let window_size = window.inner_size();
         let rows = window_size.height / atlas.cell_height;
         let cols = window_size.width / atlas.cell_width;
-        let proxy = proxy.clone();
+        let notify_proxy = proxy.clone();
         let notify = Box::new(move || {
-            proxy.send_event(TermEvent::PtyOutput).ok();
+            notify_proxy.send_event(TermEvent::PtyOutput).ok();
         });
-        let (terminal, pty_handle) = Terminal::new(
+        let exit_proxy = proxy.clone();
+        let on_exit = Box::new(move || {
+            exit_proxy.send_event(TermEvent::PtyExit).ok();
+        });
+        let terminal = Terminal::new(
             rows as usize,
             cols as usize,
             1_000_000,
-            //"nu",
-            "powershell",
+            "nu",
+            //"powershell",
+            //"bash",
+            //"cmd",
             notify,
+            on_exit,
         )
         .expect("ターミナルの起動に失敗しました");
 
@@ -57,7 +64,6 @@ impl App {
             atlas,
             renderer,
             terminal,
-            pty_handle,
 
             modifiers: Modifiers::default(),
         }
@@ -189,7 +195,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
     }
     fn user_event(
         &mut self,
-        _event_loop: &winit::event_loop::ActiveEventLoop,
+        event_loop: &winit::event_loop::ActiveEventLoop,
         event: TermEvent,
     ) {
         let Some(app) = &mut self.app
@@ -201,6 +207,9 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             TermEvent::PtyOutput => {
                 app.terminal.process_pty_output();
                 app.window.request_redraw();
+            }
+            TermEvent::PtyExit => {
+                event_loop.exit();
             }
         }
     }
