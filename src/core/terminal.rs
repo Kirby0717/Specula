@@ -70,6 +70,7 @@ fn param(params: &vte::Params, index: usize, default: usize) -> usize {
 }
 impl vte::Perform for TerminalCore {
     fn print(&mut self, c: char) {
+        self.active_grid_mut().scroll_to_bottom();
         let grid = self.active_grid_mut();
         grid.write_char(c);
     }
@@ -97,6 +98,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
+        self.active_grid_mut().scroll_to_bottom();
         let grid = self.active_grid_mut();
         match (action, intermediates) {
             // カーソル移動
@@ -232,6 +234,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
+        self.active_grid_mut().scroll_to_bottom();
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
@@ -368,6 +371,7 @@ impl Terminal {
         self.pty.resize(rows as u16, cols as u16);
     }
     pub fn write(&mut self, data: &[u8]) {
+        self.core.active_grid_mut().scroll_to_bottom();
         self.pty.writer.write_all(data).ok();
     }
     pub fn cursor(&self) -> &CursorState {
@@ -378,6 +382,9 @@ impl Terminal {
     }
     pub fn grid_cols(&self) -> usize {
         self.core.active_grid().grid_cols()
+    }
+    pub fn scroll(&mut self, lines: isize) {
+        self.core.active_grid_mut().scroll(lines);
     }
     pub fn active_grid(&self) -> &Grid {
         self.core.active_grid()
