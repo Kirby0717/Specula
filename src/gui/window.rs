@@ -4,8 +4,10 @@ use crate::core::Terminal;
 use std::{sync::Arc, thread::JoinHandle};
 
 use winit::{
-    application::ApplicationHandler, event::WindowEvent,
-    event_loop::EventLoopProxy, window::Window,
+    application::ApplicationHandler,
+    event::{Modifiers, WindowEvent},
+    event_loop::EventLoopProxy,
+    window::Window,
 };
 
 pub enum TermEvent {
@@ -19,6 +21,8 @@ struct App {
     renderer: Renderer,
     terminal: Terminal,
     pty_handle: JoinHandle<()>,
+
+    modifiers: Modifiers,
 }
 impl App {
     fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
@@ -54,6 +58,8 @@ impl App {
             renderer,
             terminal,
             pty_handle,
+
+            modifiers: Modifiers::default(),
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -116,12 +122,35 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             WindowEvent::Resized(size) => {
                 app.resize(size);
             }
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                app.modifiers = new_modifiers;
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state.is_pressed() {
                     use winit::keyboard::*;
+
+                    // Ctrl
+                    if app.modifiers.state().control_key()
+                        && let Key::Character(c) = &event.logical_key
+                        && let Some(ch) = c.chars().next()
+                    {
+                        let byte = match ch {
+                            'a'..='z' => ch as u8 - b'a' + 1,
+                            'A'..='Z' => ch as u8 - b'A' + 1,
+                            // Ctrl+[ → ESC (0x1B)
+                            '[' | '{' => 0x1b,
+                            // Ctrl+\ → 0x1C (SIGQUIT)
+                            '\\' | '|' => 0x1c,
+                            // Ctrl+] → 0x1D
+                            ']' | '}' => 0x1d,
+                            _ => return,
+                        };
+                        app.terminal.write(&[byte]);
+                        return;
+                    }
                     // 特殊キー
                     'a: {
-                        if let Key::Named(named_key) = event.logical_key {
+                        if let Key::Named(named_key) = &event.logical_key {
                             let data = match named_key {
                                 NamedKey::Enter => "\r",
                                 NamedKey::Backspace => "\x7f",
@@ -138,7 +167,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                         }
                     }
                     // 通常キー
-                    if let Some(text) = event.text {
+                    if let Some(text) = &event.text {
                         app.terminal.write(text.as_bytes());
                     }
                 }
