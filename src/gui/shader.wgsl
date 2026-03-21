@@ -39,7 +39,7 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let row = u32(pos.y / cell_size.y);
     let col = u32(pos.x / cell_size.x);
     if grid_size.y <= row || grid_size.x <= col {
-        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
     }
 
     let slots_per_row = grid_uniform.slots_per_row;

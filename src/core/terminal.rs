@@ -1,4 +1,4 @@
-use super::grid::Grid;
+use super::grid::{CursorState, Grid};
 
 use std::{
     io::{Read, Write},
@@ -37,6 +37,10 @@ impl TerminalCore {
             mode: TerminalMode::empty(),
             write_back: vec![],
         }
+    }
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        self.grid.resize(rows, cols);
+        self.alt_grid.resize(rows, cols);
     }
     fn active_grid(&self) -> &Grid {
         if self.mode.contains(TerminalMode::ALT_SCREEN) {
@@ -236,6 +240,22 @@ impl Pty {
             handle,
         ))
     }
+    pub fn resize(&mut self, rows: u16, cols: u16) {
+        if let Ok(size) = self.master.get_size()
+            && size.rows == rows
+            && size.cols == cols
+        {
+            return;
+        }
+        self.master
+            .resize(portable_pty::PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .ok();
+    }
     pub fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
         self.shell.wait()
     }
@@ -281,8 +301,16 @@ impl Terminal {
             }
         }
     }
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        self.process_pty_output();
+        self.core.resize(rows, cols);
+        self.pty.resize(rows as u16, cols as u16);
+    }
     pub fn write(&mut self, data: &[u8]) {
         self.pty.writer.write_all(data).ok();
+    }
+    pub fn cursor(&self) -> &CursorState {
+        self.active_grid().cursor()
     }
     pub fn grid_rows(&self) -> usize {
         self.core.active_grid().grid_rows()
