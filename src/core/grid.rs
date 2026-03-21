@@ -171,28 +171,32 @@ impl Grid {
     // 1: カーソル以上を消去
     // 2: 画面全体を消去
     pub fn erase_display(&mut self, mode: usize) {
+        let cell = Cell {
+            bg: self.cursor_template().bg,
+            ..Default::default()
+        };
         let row = self.cursor.point.row;
         let col = self.cursor.point.col;
         match mode {
             0 => {
                 // カーソルの右側
-                self.visible_row_mut(row)[col..].fill(Cell::default());
+                self.visible_row_mut(row)[col..].fill(cell);
                 // カーソルの下側
                 for row in row + 1..self.rows {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             1 => {
                 // カーソルの左側
-                self.visible_row_mut(row)[..=col].fill(Cell::default());
+                self.visible_row_mut(row)[..=col].fill(cell);
                 // カーソルの上側
                 for row in 0..row {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             2 => {
                 for row in 0..self.rows {
-                    self.visible_row_mut(row).fill(Cell::default());
+                    self.visible_row_mut(row).fill(cell);
                 }
             }
             _ => log::debug!("未対応の画面消去モード: {}", mode),
@@ -202,12 +206,16 @@ impl Grid {
     // 1: カーソル以上を消去
     // 2: 行全体を消去
     pub fn erase_row(&mut self, mode: usize) {
+        let cell = Cell {
+            bg: self.cursor_template().bg,
+            ..Default::default()
+        };
         let col = self.cursor.point.col;
         let row = self.visible_row_mut(self.cursor.point.row);
         match mode {
-            0 => row[col..].fill(Cell::default()),
-            1 => row[..=col].fill(Cell::default()),
-            2 => row.fill(Cell::default()),
+            0 => row[col..].fill(cell),
+            1 => row[..=col].fill(cell),
+            2 => row.fill(cell),
             _ => log::debug!("未対応の行消去モード: {}", mode),
         }
     }
