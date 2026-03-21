@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(unused)]
 pub enum NamedColor {
     // ANSI 標準 8色
     Black = 0,
