@@ -198,7 +198,7 @@ impl vte::Perform for TerminalCore {
                         90..=97 => {
                             template.fg = Color::Named(unsafe {
                                 std::mem::transmute::<u8, NamedColor>(
-                                    code as u8 - 90 + 10,
+                                    code as u8 - 90 + 8,
                                 )
                             });
                         }
@@ -206,7 +206,7 @@ impl vte::Perform for TerminalCore {
                         100..=107 => {
                             template.bg = Color::Named(unsafe {
                                 std::mem::transmute::<u8, NamedColor>(
-                                    code as u8 - 100 + 10,
+                                    code as u8 - 100 + 8,
                                 )
                             });
                         }
