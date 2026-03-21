@@ -39,7 +39,8 @@ impl App {
             rows as usize,
             cols as usize,
             1_000_000,
-            "nu",
+            //"nu",
+            "powershell",
             notify,
         )
         .expect("ターミナルの起動に失敗しました");
@@ -63,7 +64,7 @@ impl App {
         let cols = (new_size.width / self.atlas.cell_width) as usize;
 
         self.terminal.resize(rows, cols);
-        self.renderer.resize(&self.gpu, rows, cols);
+        self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
     }
 }
 

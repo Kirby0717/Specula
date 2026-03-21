@@ -79,7 +79,9 @@ pub struct GridUniform {
 
 pub struct Renderer {
     render_pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
+    sampler: wgpu::Sampler,
     cell_buffer: wgpu::Buffer,
     uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
@@ -251,13 +253,21 @@ impl Renderer {
 
         Self {
             render_pipeline,
+            bind_group_layout,
             bind_group,
+            sampler,
             cell_buffer,
             uniform,
             uniform_buffer,
         }
     }
-    pub fn resize(&mut self, gpu: &GpuContext, rows: usize, cols: usize) {
+    pub fn resize(
+        &mut self,
+        gpu: &GpuContext,
+        atlas: &GlyphAtlas,
+        rows: usize,
+        cols: usize,
+    ) {
         let need_buffer_size = (rows * cols * size_of::<GpuCell>()) as u64;
         if self.cell_buffer.size() < need_buffer_size {
             self.cell_buffer =
@@ -267,6 +277,37 @@ impl Renderer {
                     usage: wgpu::BufferUsages::STORAGE
                         | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
+                });
+            self.bind_group =
+                gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("BindGroup"),
+                    layout: &self.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(
+                                &atlas.view,
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(
+                                &self.sampler,
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Buffer(
+                                self.cell_buffer.as_entire_buffer_binding(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Buffer(
+                                self.uniform_buffer.as_entire_buffer_binding(),
+                            ),
+                        },
+                    ],
                 });
         }
 
