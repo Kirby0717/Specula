@@ -91,7 +91,9 @@ impl Grid {
         let cols = cols.max(Self::MIN_COLS);
         if rows != self.rows {
             if self.rows < rows {
-                for _ in 0..(rows - self.rows) {
+                let add = rows - self.rows;
+                self.rows = rows;
+                for _ in 0..add {
                     self.add_row();
                 }
             }
@@ -115,6 +117,11 @@ impl Grid {
 
         self.clamp_cursor();
         self.cursor.pending_wrap = false;
+    }
+    pub fn clear(&mut self) {
+        for row in 0..self.rows {
+            self.screen_row_mut(row).fill(Cell::default());
+        }
     }
     pub fn grid_rows(&self) -> usize {
         self.rows
