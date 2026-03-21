@@ -130,6 +130,12 @@ impl Grid {
     pub fn cursor(&self) -> &CursorState {
         &self.cursor
     }
+    pub fn cursor_template(&self) -> &Cell {
+        &self.cursor.template
+    }
+    pub fn cursor_template_mut(&mut self) -> &mut Cell {
+        &mut self.cursor.template
+    }
     pub fn cursor_up(&mut self, n: usize) {
         self.cursor.point.row = self.cursor.point.row.wrapping_sub(n);
         self.cursor.pending_wrap = false;
@@ -288,6 +294,8 @@ impl Grid {
             return;
         }
 
+        let template = *self.cursor_template();
+
         // 折り返し処理
         if self.cursor.pending_wrap {
             let cell = self.cell_at_cursor();
@@ -301,18 +309,20 @@ impl Grid {
             // 入らなければ改行
             if self.cols - 1 <= self.cursor.point.col {
                 let cell = self.cell_at_cursor();
+                *cell = template;
                 cell.c = ' ';
-                cell.flags = CellFlags::empty();
                 self.linefeed();
                 self.carriage_return();
             }
 
             self.clear_wide_at_cursor();
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = c;
             cell.flags = CellFlags::WIDE_CHAR;
             self.cursor_right(1);
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = ' ';
             cell.flags = CellFlags::WIDE_CHAR_SPACER;
         }
@@ -320,6 +330,7 @@ impl Grid {
         else {
             self.clear_wide_at_cursor();
             let cell = self.cell_at_cursor();
+            *cell = template;
             cell.c = c;
             cell.flags = CellFlags::empty();
         }

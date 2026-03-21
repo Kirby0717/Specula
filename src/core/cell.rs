@@ -1,26 +1,69 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum NamedColor {
     // ANSI 標準 8色
-    Black,
-    Red,
-    Green,
-    Yellow,
-    Blue,
-    Magenta,
-    Cyan,
-    White,
+    Black = 0,
+    Red = 1,
+    Green = 2,
+    Yellow = 3,
+    Blue = 4,
+    Magenta = 5,
+    Cyan = 6,
+    White = 7,
     // 高輝度 8色
-    BrightBlack,
-    BrightRed,
-    BrightGreen,
-    BrightYellow,
-    BrightBlue,
-    BrightMagenta,
-    BrightCyan,
-    BrightWhite,
+    BrightBlack = 8,
+    BrightRed = 9,
+    BrightGreen = 10,
+    BrightYellow = 11,
+    BrightBlue = 12,
+    BrightMagenta = 13,
+    BrightCyan = 14,
+    BrightWhite = 15,
     // 端末デフォルト
-    Foreground,
-    Background,
+    Foreground = 16,
+    Background = 17,
+}
+impl NamedColor {
+    pub fn into_color(self) -> [u8; 3] {
+        [
+            // Black
+            [0, 0, 0],
+            // Red
+            [205, 0, 0],
+            // Green
+            [0, 205, 0],
+            // Yellow
+            [205, 205, 0],
+            // Blue
+            [0, 0, 238],
+            // Magenta
+            [205, 0, 205],
+            // Cyan
+            [0, 205, 205],
+            // White
+            [229, 229, 229],
+            // BrightBlack
+            [127, 127, 127],
+            // BrightRed
+            [255, 0, 0],
+            // BrightGreen
+            [0, 255, 0],
+            // BrightYellow
+            [255, 255, 0],
+            // BrightBlue
+            [92, 92, 255],
+            // BrightMagenta
+            [255, 0, 255],
+            // BrightCyan
+            [0, 255, 255],
+            // BrightWhite
+            [255, 255, 255],
+            // Foreground
+            [229, 229, 229],
+            // Background
+            [0, 0, 0],
+        ][unsafe { std::mem::transmute::<NamedColor, u8>(self) as usize }]
+    }
 }
 
 bitflags::bitflags! {
