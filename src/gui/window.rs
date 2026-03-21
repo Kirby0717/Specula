@@ -30,7 +30,7 @@ impl App {
         let mut gpu = GpuContext::new(&window);
         gpu.configure_surface();
 
-        let atlas = GlyphAtlas::new(&gpu, 32.0);
+        let atlas = GlyphAtlas::new(&gpu, 24.0);
 
         let window_size = window.inner_size();
         let rows = window_size.height / atlas.cell_height;
@@ -156,6 +156,20 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state.is_pressed() {
                     use winit::keyboard::*;
+
+                    // ペースト
+                    if app.modifiers.state().control_key()
+                        && app.modifiers.state().shift_key()
+                        && event.physical_key
+                            == PhysicalKey::Code(KeyCode::KeyV)
+                    {
+                        if let Ok(mut clipboard) = arboard::Clipboard::new()
+                            && let Ok(text) = clipboard.get_text()
+                        {
+                            app.terminal.write(text.as_bytes());
+                        }
+                        return;
+                    }
 
                     // Ctrl
                     if app.modifiers.state().control_key()
