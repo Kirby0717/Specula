@@ -92,7 +92,7 @@ impl Grid {
         if rows != self.rows {
             if self.rows < rows {
                 for _ in 0..(rows - self.rows) {
-                    self.buffer.push_back(Row::new(cols));
+                    self.add_row();
                 }
             }
             else {
@@ -269,7 +269,7 @@ impl Grid {
     }
     fn add_row(&mut self) {
         self.buffer.push_back(Row::new(self.cols));
-        if self.max_scrollback + self.rows <= self.buffer.len() {
+        while self.max_scrollback + self.rows < self.buffer.len() {
             self.buffer.pop_front();
         }
     }
