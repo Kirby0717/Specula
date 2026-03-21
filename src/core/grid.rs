@@ -1,6 +1,4 @@
-use crate::cell::CellFlags;
-
-use super::cell::Cell;
+use super::cell::{Cell, CellFlags};
 
 use std::collections::VecDeque;
 
@@ -88,6 +86,42 @@ impl Grid {
             cursor: Default::default(),
         }
     }
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        let rows = rows.max(Self::MIN_ROWS);
+        let cols = cols.max(Self::MIN_COLS);
+        if rows != self.rows {
+            if self.rows < rows {
+                for _ in 0..(rows - self.rows) {
+                    self.add_row();
+                }
+            }
+            else {
+                let delete = self.rows - rows;
+                for _ in 0..delete {
+                    self.buffer.pop_back();
+                }
+            }
+            self.rows = rows;
+        }
+        if cols != self.cols {
+            for y in 0..rows {
+                let buffer_index = self.buffer.len() - rows + y;
+                self.buffer[buffer_index]
+                    .inner
+                    .resize(cols, Cell::default());
+            }
+            self.cols = cols;
+        }
+
+        self.clamp_cursor();
+        self.cursor.pending_wrap = false;
+    }
+    pub fn grid_rows(&self) -> usize {
+        self.rows
+    }
+    pub fn grid_cols(&self) -> usize {
+        self.cols
+    }
     fn clamp_cursor(&mut self) {
         let point = &mut self.cursor.point;
         point.row = point.row.min(self.rows - 1);
@@ -129,23 +163,23 @@ impl Grid {
         match mode {
             0 => {
                 // カーソルの右側
-                self.visible_row(row).inner[col..].fill(Cell::default());
+                self.visible_row_mut(row)[col..].fill(Cell::default());
                 // カーソルの下側
                 for row in row + 1..self.rows {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             1 => {
                 // カーソルの左側
-                self.visible_row(row).inner[..=col].fill(Cell::default());
+                self.visible_row_mut(row)[..=col].fill(Cell::default());
                 // カーソルの上側
                 for row in 0..row {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             2 => {
                 for row in 0..self.rows {
-                    self.visible_row(row).inner.fill(Cell::default());
+                    self.visible_row_mut(row).fill(Cell::default());
                 }
             }
             _ => log::debug!("未対応の画面消去モード: {}", mode),
@@ -156,11 +190,11 @@ impl Grid {
     // 2: 行全体を消去
     pub fn erase_row(&mut self, mode: usize) {
         let col = self.cursor.point.col;
-        let row = self.visible_row(self.cursor.point.row);
+        let row = self.visible_row_mut(self.cursor.point.row);
         match mode {
-            0 => row.inner[col..].fill(Cell::default()),
-            1 => row.inner[..=col].fill(Cell::default()),
-            2 => row.inner.fill(Cell::default()),
+            0 => row[col..].fill(Cell::default()),
+            1 => row[..=col].fill(Cell::default()),
+            2 => row.fill(Cell::default()),
             _ => log::debug!("未対応の行消去モード: {}", mode),
         }
     }
@@ -197,9 +231,23 @@ impl Grid {
             self.buffer.insert(insert_idx, Row::new(self.cols));
         }
     }
-    fn visible_row(&mut self, row: usize) -> &mut Row {
+    pub fn visible_row(&self, row: usize) -> &[Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
         let buffer_index = self.buffer.len() - self.rows + row;
-        &mut self.buffer[buffer_index]
+        &self.buffer[buffer_index].inner
+    }
+    fn visible_row_mut(&mut self, row: usize) -> &mut [Cell] {
+        debug_assert!(
+            row < self.rows,
+            "指定された行数({row})が0～{}の範囲外です",
+            self.rows
+        );
+        let buffer_index = self.buffer.len() - self.rows + row;
+        &mut self.buffer[buffer_index].inner
     }
     fn cell_at_cursor(&mut self) -> &mut Cell {
         // 本来なら起こらない
@@ -217,33 +265,59 @@ impl Grid {
         }
 
         let Point { row, col } = self.cursor.point;
-        &mut self.visible_row(row).inner[col]
+        &mut self.visible_row_mut(row)[col]
     }
     fn add_row(&mut self) {
         self.buffer.push_back(Row::new(self.cols));
-        if self.max_scrollback + self.cols <= self.buffer.len() {
+        while self.max_scrollback + self.rows < self.buffer.len() {
             self.buffer.pop_front();
         }
     }
     pub fn write_char(&mut self, c: char) {
         self.display_offset = 0;
 
+        let width = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+        if width == 0 {
+            return;
+        }
+
+        // 折り返し処理
         if self.cursor.pending_wrap {
             let cell = self.cell_at_cursor();
             cell.flags.insert(CellFlags::WRAPLINE);
-            if self.cursor.point.row == self.rows - 1 {
-                self.add_row();
-            }
-            else {
-                self.cursor.point.row += 1;
-            }
-            self.cursor.point.col = 0;
-            self.cursor.pending_wrap = false;
+            self.linefeed();
+            self.carriage_return();
         }
 
-        let cell = self.cell_at_cursor();
-        cell.c = c;
+        // 全角
+        if width == 2 {
+            // 入らなければ改行
+            if self.cols - 1 <= self.cursor.point.col {
+                let cell = self.cell_at_cursor();
+                cell.c = ' ';
+                cell.flags = CellFlags::empty();
+                self.linefeed();
+                self.carriage_return();
+            }
 
+            self.clear_wide_at_cursor();
+            let cell = self.cell_at_cursor();
+            cell.c = c;
+            cell.flags = CellFlags::WIDE_CHAR;
+            self.cursor_right(1);
+            let cell = self.cell_at_cursor();
+            cell.c = ' ';
+            cell.flags = CellFlags::WIDE_CHAR_SPACER;
+        }
+        //半角
+        else {
+            self.clear_wide_at_cursor();
+            let cell = self.cell_at_cursor();
+            cell.c = c;
+            cell.flags = CellFlags::empty();
+        }
+
+        // 行末処理
         if self.cursor.point.col == self.cols - 1 {
             self.cursor.pending_wrap = true;
         }
@@ -251,20 +325,22 @@ impl Grid {
             self.cursor.point.col += 1;
         }
     }
+    fn clear_wide_at_cursor(&mut self) {
+        let col = self.cursor.point.col;
+        let row = self.cursor.point.row;
 
-    /// 可視領域の内容をデバッグ用文字列として返す
-    pub fn dump_visible(&self) -> String {
-        let mut result = String::new();
-        for r in 0..self.rows {
-            let idx = self.buffer.len() - self.rows + r;
-            for cell in &self.buffer[idx].inner {
-                result.push(cell.c);
-            }
-            /*/ 末尾の空白を除去すると見やすい
-            let trimmed = result.trim_end();
-            result.truncate(trimmed.len());*/
-            result.push('\n');
+        let flags = self.visible_row(row)[col].flags;
+
+        if flags.contains(CellFlags::WIDE_CHAR) && col + 1 < self.cols {
+            let spacer = &mut self.visible_row_mut(row)[col + 1];
+            spacer.c = ' ';
+            spacer.flags = CellFlags::empty();
         }
-        result
+
+        if flags.contains(CellFlags::WIDE_CHAR_SPACER) && col > 0 {
+            let wide = &mut self.visible_row_mut(row)[col - 1];
+            wide.c = ' ';
+            wide.flags = CellFlags::empty();
+        }
     }
 }

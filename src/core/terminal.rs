@@ -1,8 +1,8 @@
-use super::grid::Grid;
+use super::grid::{CursorState, Grid};
 
 use std::{
     io::{Read, Write},
-    sync::{Arc, Mutex, mpsc},
+    sync::mpsc,
     thread::JoinHandle,
 };
 
@@ -38,16 +38,25 @@ impl TerminalCore {
             write_back: vec![],
         }
     }
-    fn active_grid(&mut self) -> &mut Grid {
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        self.grid.resize(rows, cols);
+        self.alt_grid.resize(rows, cols);
+    }
+    fn active_grid(&self) -> &Grid {
+        if self.mode.contains(TerminalMode::ALT_SCREEN) {
+            &self.alt_grid
+        }
+        else {
+            &self.grid
+        }
+    }
+    fn active_grid_mut(&mut self) -> &mut Grid {
         if self.mode.contains(TerminalMode::ALT_SCREEN) {
             &mut self.alt_grid
         }
         else {
             &mut self.grid
         }
-    }
-    pub fn dump_visible(&mut self) -> String {
-        self.active_grid().dump_visible()
     }
 }
 // 最初のパラメータを取り出すヘルパー
@@ -62,11 +71,11 @@ fn param(params: &vte::Params, index: usize, default: usize) -> usize {
 }
 impl vte::Perform for TerminalCore {
     fn print(&mut self, c: char) {
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         grid.write_char(c);
     }
     fn execute(&mut self, byte: u8) {
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match byte {
             // 改行 LF カーソルを1つ下に移動
             0x0A => grid.linefeed(),
@@ -90,7 +99,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match (action, intermediates) {
             // カーソル移動
             ('A', []) => {
@@ -161,7 +170,7 @@ impl vte::Perform for TerminalCore {
         if ignore {
             return;
         }
-        let grid = self.active_grid();
+        let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
             _ => log::debug!(
@@ -185,6 +194,7 @@ impl Pty {
     pub fn new(
         shell: &str,
         size: portable_pty::PtySize,
+        notify: Box<dyn Fn() + Send>,
     ) -> anyhow::Result<(Self, JoinHandle<()>)> {
         use portable_pty::{CommandBuilder, PtyPair, native_pty_system};
 
@@ -210,6 +220,7 @@ impl Pty {
                             log::error!("ターミナルへの送信エラー : {e}");
                             break;
                         }
+                        notify();
                     }
                     Err(e) => {
                         log::error!("PTYからの受信エラー : {e}");
@@ -228,6 +239,22 @@ impl Pty {
             },
             handle,
         ))
+    }
+    pub fn resize(&mut self, rows: u16, cols: u16) {
+        if let Ok(size) = self.master.get_size()
+            && size.rows == rows
+            && size.cols == cols
+        {
+            return;
+        }
+        self.master
+            .resize(portable_pty::PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .ok();
     }
     pub fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
         self.shell.wait()
@@ -248,6 +275,7 @@ impl Terminal {
         cols: usize,
         max_scrollback: usize,
         shell: &str,
+        notify: Box<dyn Fn() + Send>,
     ) -> anyhow::Result<(Self, JoinHandle<()>)> {
         let core = TerminalCore::new(rows, cols, max_scrollback);
         let parser = vte::Parser::new();
@@ -259,6 +287,7 @@ impl Terminal {
                 pixel_width: 1920 / 2,
                 pixel_height: 1080,
             },
+            notify,
         )?;
         Ok((Self { core, parser, pty }, handle))
     }
@@ -272,8 +301,25 @@ impl Terminal {
             }
         }
     }
+    pub fn resize(&mut self, rows: usize, cols: usize) {
+        self.process_pty_output();
+        self.core.resize(rows, cols);
+        self.pty.resize(rows as u16, cols as u16);
+    }
     pub fn write(&mut self, data: &[u8]) {
         self.pty.writer.write_all(data).ok();
+    }
+    pub fn cursor(&self) -> &CursorState {
+        self.active_grid().cursor()
+    }
+    pub fn grid_rows(&self) -> usize {
+        self.core.active_grid().grid_rows()
+    }
+    pub fn grid_cols(&self) -> usize {
+        self.core.active_grid().grid_cols()
+    }
+    pub fn active_grid(&self) -> &Grid {
+        self.core.active_grid()
     }
 }
 impl std::fmt::Debug for Terminal {
