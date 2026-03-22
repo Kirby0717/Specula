@@ -32,7 +32,7 @@ impl GpuContext {
         let surface = instance.create_surface(window.clone()).unwrap();
         let cap = surface.get_capabilities(&adapter);
         let surface_format = if let Some(f) =
-            cap.formats.iter().find(|format| format.is_srgb())
+            cap.formats.iter().find(|format| !format.is_srgb())
         {
             *f
         }
