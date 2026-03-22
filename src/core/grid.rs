@@ -56,6 +56,8 @@ pub struct Grid {
     /// カーソル
     /// 画面上の相対位置で、画面外に出ない
     cursor: CursorState,
+    /// カーソルの保存先
+    saved_cursor: CursorState,
 }
 impl Grid {
     const MIN_ROWS: usize = 1;
@@ -84,6 +86,7 @@ impl Grid {
             max_scrollback,
             viewport_offset: 0,
             cursor: Default::default(),
+            saved_cursor: Default::default(),
         }
     }
     pub fn resize(&mut self, rows: usize, cols: usize) {
@@ -128,6 +131,14 @@ impl Grid {
     }
     pub fn grid_cols(&self) -> usize {
         self.cols
+    }
+    pub fn save_cursor(&mut self) {
+        self.saved_cursor = self.cursor.clone();
+    }
+
+    pub fn restore_cursor(&mut self) {
+        self.cursor = self.saved_cursor.clone();
+        self.clamp_cursor();
     }
     fn clamp_cursor(&mut self) {
         let point = &mut self.cursor.point;
@@ -258,6 +269,33 @@ impl Grid {
             let insert_idx = self.buffer.len() - (self.rows - 1);
             self.buffer.insert(insert_idx, Row::new(self.cols));
         }
+        self.cursor.pending_wrap = false;
+    }
+    pub fn insert_lines(&mut self, n: usize) {
+        let n = n.min(self.rows - self.cursor.point.row);
+        let cursor_idx = self.buffer.len() - self.rows + self.cursor.point.row;
+
+        for _ in 0..n {
+            self.buffer.insert(cursor_idx, Row::new(self.cols));
+        }
+        for _ in 0..n {
+            self.buffer.pop_back();
+        }
+
+        self.cursor.pending_wrap = false;
+    }
+    pub fn delete_lines(&mut self, n: usize) {
+        let n = n.min(self.rows - self.cursor.point.row);
+        let cursor_idx = self.buffer.len() - self.rows + self.cursor.point.row;
+
+        for _ in 0..n {
+            self.buffer.remove(cursor_idx);
+        }
+        for _ in 0..n {
+            self.buffer.push_back(Row::new(self.cols));
+        }
+
+        self.cursor.pending_wrap = false;
     }
     pub fn screen_row(&self, row: usize) -> &[Cell] {
         debug_assert!(

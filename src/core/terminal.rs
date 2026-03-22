@@ -38,7 +38,7 @@ impl TerminalCore {
         Self {
             grid: Grid::new(rows, cols, max_scrollback),
             alt_grid: Grid::new(rows, cols, 0),
-            mode: TerminalMode::empty(),
+            mode: TerminalMode::CURSOR_VISIBLE,
             write_back: vec![],
         }
     }
@@ -71,12 +71,15 @@ impl TerminalCore {
                     self.alt_grid.clear();
                 }
             }
-            2004 => { /* ブラケットペースト */ }
+            // ブラケットペースト
+            2004 => {
+                self.mode.set(TerminalMode::BRACKETED_PASTE, enable);
+            }
             // カーソル表示/非表示
             25 => {
                 self.mode.set(TerminalMode::CURSOR_VISIBLE, enable);
             }
-            _ => log::debug!("未対応 DEC mode: {mode}"),
+            _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
 }
@@ -169,7 +172,7 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
                     std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
                 });
             }
-            _ => log::debug!("未対応 SGR: code={code}",),
+            _ => log::warn!("未対応 SGR: code={code}",),
         }
     }
 }
@@ -190,7 +193,7 @@ impl vte::Perform for TerminalCore {
             0x08 => grid.backspace(),
             // タブ HT 次のタブストップへ移動
             0x09 => grid.tab(),
-            _ => log::debug!("未対応の制御文字: 0x{:02X}", byte),
+            _ => log::warn!("未対応の制御文字: 0x{:02X}", byte),
         }
     }
     fn csi_dispatch(
@@ -281,7 +284,17 @@ impl vte::Perform for TerminalCore {
                 }
             }
 
-            _ => log::debug!(
+            // 行削除/挿入
+            ('L', []) => {
+                let n = param(params, 0, 1);
+                grid.insert_lines(n);
+            }
+            ('M', []) => {
+                let n = param(params, 0, 1);
+                grid.delete_lines(n);
+            }
+
+            _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
         }
@@ -294,7 +307,10 @@ impl vte::Perform for TerminalCore {
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
-            _ => log::debug!(
+            // カーソル保存/復元
+            (b'7', []) => grid.save_cursor(),
+            (b'8', []) => grid.restore_cursor(),
+            _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
         }
@@ -434,6 +450,17 @@ impl Terminal {
         self.core.active_grid_mut().scroll_to_bottom();
         self.pty.writer.write_all(data).ok();
     }
+    pub fn paste(&mut self, text: &str) {
+        self.core.active_grid_mut().scroll_to_bottom();
+        if self.core.mode.contains(TerminalMode::BRACKETED_PASTE) {
+            self.pty.writer.write_all(b"\x1b[200~").ok();
+            self.pty.writer.write_all(text.as_bytes()).ok();
+            self.pty.writer.write_all(b"\x1b[201~").ok();
+        }
+        else {
+            self.pty.writer.write_all(text.as_bytes()).ok();
+        }
+    }
     pub fn cursor(&self) -> &CursorState {
         self.active_grid().cursor()
     }
@@ -448,6 +475,9 @@ impl Terminal {
     }
     pub fn active_grid(&self) -> &Grid {
         self.core.active_grid()
+    }
+    pub fn mode(&self) -> TerminalMode {
+        self.core.mode
     }
 }
 impl std::fmt::Debug for Terminal {

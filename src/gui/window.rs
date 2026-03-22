@@ -164,7 +164,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                         if let Ok(mut clipboard) = arboard::Clipboard::new()
                             && let Ok(text) = clipboard.get_text()
                         {
-                            app.terminal.write(text.as_bytes());
+                            app.terminal.paste(&text);
                         }
                         return;
                     }
