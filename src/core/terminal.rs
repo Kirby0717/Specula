@@ -294,6 +294,8 @@ impl vte::Perform for TerminalCore {
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
+            (b'7', []) => grid.save_cursor(),
+            (b'8', []) => grid.restore_cursor(),
             _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
@@ -337,12 +339,6 @@ impl Pty {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(len) => {
-                        /*for b in &buf[..len] {
-                            tx.send(vec![*b]).ok();
-                            std::thread::sleep(
-                                std::time::Duration::from_millis(1),
-                            );
-                        }*/
                         if let Err(e) = tx.send(buf[..len].to_vec()) {
                             log::error!("ターミナルへの送信エラー : {e}");
                             break;
