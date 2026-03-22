@@ -18,7 +18,16 @@ bitflags::bitflags! {
         const BRACKETED_PASTE  = 1 << 1;   // ESC[?2004h/l
         // カーソル表示
         const CURSOR_VISIBLE   = 1 << 2;   // ESC[?23h/l
-        // 今後追加: マウスレポート 等
+        // マウスのボタンを送信
+        const MOUSE_REPORT     = 1 << 3;   // ESC[?1000h
+        // マウスのドラッグを送信
+        const MOUSE_DRAG       = 1 << 4;   // ESC[?1002h
+        // マウスの位置を送信
+        const MOUSE_MOTION     = 1 << 5;   // ESC[?1003h
+        // マウスの送信形式をSGRにする
+        const MOUSE_SGR        = 1 << 6;   // ESC[?1006h
+        // フォーカス状態を送信
+        const FOCUS_REPORT     = 1 << 7;   // ESC[?1004h
     }
 }
 
@@ -78,6 +87,28 @@ impl TerminalCore {
             // カーソル表示/非表示
             25 => {
                 self.mode.set(TerminalMode::CURSOR_VISIBLE, enable);
+            }
+            // マウスレポート
+            1000 | 1002 | 1003 => {
+                self.mode.remove(
+                    TerminalMode::MOUSE_REPORT
+                        | TerminalMode::MOUSE_DRAG
+                        | TerminalMode::MOUSE_MOTION,
+                );
+                match mode {
+                    1000 => self.mode.set(TerminalMode::MOUSE_REPORT, enable),
+                    1002 => self.mode.set(TerminalMode::MOUSE_DRAG, enable),
+                    1003 => self.mode.set(TerminalMode::MOUSE_MOTION, enable),
+                    _ => {}
+                }
+            }
+            // SGRエンコーディング
+            1006 => {
+                self.mode.set(TerminalMode::MOUSE_SGR, enable);
+            }
+            // フォーカスレポート
+            1004 => {
+                self.mode.set(TerminalMode::FOCUS_REPORT, enable);
             }
             _ => log::warn!("未対応 DEC mode: {mode}"),
         }
