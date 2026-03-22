@@ -73,6 +73,14 @@ pub struct GpuCell {
     bg: [f32; 4],
 }
 
+#[repr(u32)]
+#[allow(unused)]
+pub enum CursorShape {
+    Hidden = 0,
+    Block = 1,
+    Underline = 2,
+    Bar = 3,
+}
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GridUniform {
@@ -81,7 +89,10 @@ pub struct GridUniform {
     atlas_size: [f32; 2],
     slots_per_row: u32,
     // vec2のアライメント用パディング
-    _padding: u32,
+    _padding1: u32,
+    cursor_pos: [u32; 2],
+    cursor_style: u32,
+    _padding2: u32,
 }
 
 pub struct Renderer {
@@ -125,7 +136,13 @@ impl Renderer {
                 GlyphAtlas::ATLAS_SIZE as f32,
             ],
             slots_per_row: atlas.slots_per_row,
-            _padding: Default::default(),
+            _padding1: Default::default(),
+            cursor_pos: {
+                let point = terminal.cursor().point;
+                [point.col as u32, point.row as u32]
+            },
+            cursor_style: CursorShape::Block as u32,
+            _padding2: Default::default(),
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -326,7 +343,7 @@ impl Renderer {
         );
     }
     pub fn render(
-        &self,
+        &mut self,
         window: &winit::window::Window,
         gpu: &GpuContext,
         atlas: &mut GlyphAtlas,
@@ -371,7 +388,6 @@ impl Renderer {
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
         let grid = terminal.active_grid();
-        let cursor = terminal.cursor();
         for y in 0..grid.grid_rows() {
             let row = grid.viewport_row(y);
             let mut wide_right = None;
@@ -381,25 +397,6 @@ impl Renderer {
                     let cell = &row[x];
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
-
-                    // カーソル
-                    if !grid.is_scrollback()
-                        && cursor.point.row == y
-                        && cursor.point.col == x
-                    {
-                        let GlyphIndex::Narrow(glyph_index) =
-                            atlas.get_or_insert(gpu, ' ', false)
-                        else {
-                            unreachable!()
-                        };
-                        cell_buffer.push(GpuCell {
-                            glyph_index,
-                            _pad: Default::default(),
-                            fg,
-                            bg: [0.0, 1.0, 0.0, 1.0],
-                        });
-                        continue;
-                    }
 
                     // ワイドの左側
                     if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
@@ -456,6 +453,18 @@ impl Renderer {
             &self.cell_buffer,
             0,
             bytemuck::cast_slice(&cell_buffer),
+        );
+
+        // カーソルの更新
+        let point = terminal.cursor().point;
+        self.uniform.cursor_pos = [
+            point.col as u32,
+            (point.row + grid.viewport_offset()) as u32,
+        ];
+        gpu.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&self.uniform),
         );
 
         // デバッグテクスチャの描画

@@ -16,6 +16,10 @@ struct GridUniform {
     grid_size: vec2<u32>,
     atlas_size: vec2<f32>,
     slots_per_row: u32,
+    _pad1: u32,
+    cursor_pos: vec2<u32>,
+    cursor_style: u32,
+    _pad2: u32,
 }
 
 @vertex
@@ -36,16 +40,15 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let cell_size = grid_uniform.cell_size;
     let grid_size = grid_uniform.grid_size;
 
-    let row = u32(pos.y / cell_size.y);
-    let col = u32(pos.x / cell_size.x);
-    if grid_size.y <= row || grid_size.x <= col {
+    let cell_pos = vec2<u32>(pos.xy / cell_size);
+    if any(grid_size <= cell_pos) {
         return vec4<f32>(1.0, 0.0, 0.0, 1.0);
     }
 
     let slots_per_row = grid_uniform.slots_per_row;
     let atlas_size = grid_uniform.atlas_size;
 
-    let index = row * grid_size.x + col;
+    let index = cell_pos.y * grid_size.x + cell_pos.x;
     let cell = cells[index];
     let slot_pos = vec2<u32>(
         cell.glyph_index % slots_per_row,
@@ -54,10 +57,40 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let local_pos = vec2<u32>(pos.xy) % vec2<u32>(cell_size);
 
     let uv = vec2<f32>(slot_pos * vec2<u32>(cell_size) + local_pos) / atlas_size;
-
     let alpha = textureSample(atlas, s, uv).r;
+    var color = mix(cell.bg, cell.fg, alpha);
 
-    return mix(cell.bg, cell.fg, alpha);
+    let cursor_pos = grid_uniform.cursor_pos;
+    let cursor_style = grid_uniform.cursor_style;
+    if all(cell_pos == cursor_pos) {
+        switch cursor_style {
+            // カーソルなし
+            case 0: {
+                color = mix(cell.bg, cell.fg, alpha);
+            }
+            // ブロック
+            case 1: {
+                color = mix(cell.fg, cell.bg, alpha);
+            }
+            // 下線
+            case 2: {
+                if u32(cell_size.y) - 2 <= local_pos.y {
+                    color = cell.fg;
+                }
+            }
+            // 縦線
+            case 3: {
+                if local_pos.x < 2 {
+                    color = cell.fg;
+                }
+            }
+            // 不正なカーソルは紫
+            default: {
+                color = vec4<f32>(1.0, 0.0, 1.0, 1.0);
+            }
+        }
+    }
+    return color;
 }
 
 fn mix(bg: vec4<f32>, fg: vec4<f32>, alpha: f32) -> vec4<f32> {
