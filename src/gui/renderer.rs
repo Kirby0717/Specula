@@ -1,5 +1,5 @@
 use super::atlas::{GlyphAtlas, GlyphIndex};
-use crate::core::{CellFlags, Terminal};
+use crate::core::{CellFlags, Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -464,7 +464,17 @@ impl Renderer {
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
-            bytemuck::bytes_of(&self.uniform),
+            bytemuck::bytes_of(&GridUniform {
+                cursor_style: {
+                    if terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
+                        self.uniform.cursor_style
+                    }
+                    else {
+                        CursorShape::Hidden as u32
+                    }
+                },
+                ..self.uniform
+            }),
         );
 
         // デバッグテクスチャの描画

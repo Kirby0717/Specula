@@ -64,10 +64,8 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let cursor_style = grid_uniform.cursor_style;
     if all(cell_pos == cursor_pos) {
         switch cursor_style {
-            // カーソルなし
-            case 0: {
-                color = mix(cell.bg, cell.fg, alpha);
-            }
+            // 非表示
+            case 0: {}
             // ブロック
             case 1: {
                 color = mix(cell.fg, cell.bg, alpha);

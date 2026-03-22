@@ -76,7 +76,7 @@ impl TerminalCore {
             25 => {
                 self.mode.set(TerminalMode::CURSOR_VISIBLE, enable);
             }
-            _ => log::debug!("未対応 DEC mode: {mode}"),
+            _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
 }
@@ -169,7 +169,7 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
                     std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
                 });
             }
-            _ => log::debug!("未対応 SGR: code={code}",),
+            _ => log::warn!("未対応 SGR: code={code}",),
         }
     }
 }
@@ -190,7 +190,7 @@ impl vte::Perform for TerminalCore {
             0x08 => grid.backspace(),
             // タブ HT 次のタブストップへ移動
             0x09 => grid.tab(),
-            _ => log::debug!("未対応の制御文字: 0x{:02X}", byte),
+            _ => log::warn!("未対応の制御文字: 0x{:02X}", byte),
         }
     }
     fn csi_dispatch(
@@ -281,7 +281,7 @@ impl vte::Perform for TerminalCore {
                 }
             }
 
-            _ => log::debug!(
+            _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
         }
@@ -294,7 +294,7 @@ impl vte::Perform for TerminalCore {
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
-            _ => log::debug!(
+            _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
         }
@@ -337,6 +337,12 @@ impl Pty {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(len) => {
+                        /*for b in &buf[..len] {
+                            tx.send(vec![*b]).ok();
+                            std::thread::sleep(
+                                std::time::Duration::from_millis(1),
+                            );
+                        }*/
                         if let Err(e) = tx.send(buf[..len].to_vec()) {
                             log::error!("ターミナルへの送信エラー : {e}");
                             break;
@@ -448,6 +454,9 @@ impl Terminal {
     }
     pub fn active_grid(&self) -> &Grid {
         self.core.active_grid()
+    }
+    pub fn mode(&self) -> TerminalMode {
+        self.core.mode
     }
 }
 impl std::fmt::Debug for Terminal {
