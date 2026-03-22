@@ -281,6 +281,16 @@ impl vte::Perform for TerminalCore {
                 }
             }
 
+            // 行削除/挿入
+            ('L', []) => {
+                let n = param(params, 0, 1);
+                grid.insert_lines(n);
+            }
+            ('M', []) => {
+                let n = param(params, 0, 1);
+                grid.delete_lines(n);
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
@@ -294,6 +304,7 @@ impl vte::Perform for TerminalCore {
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
             (b'M', []) => grid.reverse_index(),
+            // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
             (b'8', []) => grid.restore_cursor(),
             _ => log::warn!(

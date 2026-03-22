@@ -269,6 +269,33 @@ impl Grid {
             let insert_idx = self.buffer.len() - (self.rows - 1);
             self.buffer.insert(insert_idx, Row::new(self.cols));
         }
+        self.cursor.pending_wrap = false;
+    }
+    pub fn insert_lines(&mut self, n: usize) {
+        let n = n.min(self.rows - self.cursor.point.row);
+        let cursor_idx = self.buffer.len() - self.rows + self.cursor.point.row;
+
+        for _ in 0..n {
+            self.buffer.insert(cursor_idx, Row::new(self.cols));
+        }
+        for _ in 0..n {
+            self.buffer.pop_back();
+        }
+
+        self.cursor.pending_wrap = false;
+    }
+    pub fn delete_lines(&mut self, n: usize) {
+        let n = n.min(self.rows - self.cursor.point.row);
+        let cursor_idx = self.buffer.len() - self.rows + self.cursor.point.row;
+
+        for _ in 0..n {
+            self.buffer.remove(cursor_idx);
+        }
+        for _ in 0..n {
+            self.buffer.push_back(Row::new(self.cols));
+        }
+
+        self.cursor.pending_wrap = false;
     }
     pub fn screen_row(&self, row: usize) -> &[Cell] {
         debug_assert!(
