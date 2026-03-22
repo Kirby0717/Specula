@@ -457,19 +457,14 @@ impl Renderer {
 
         // カーソルの更新
         let point = terminal.cursor().point;
-        self.uniform.cursor_pos = [point.col as u32, point.row as u32];
+        self.uniform.cursor_pos = [
+            point.col as u32,
+            (point.row + grid.viewport_offset()) as u32,
+        ];
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
-            bytemuck::bytes_of(&GridUniform {
-                cursor_style: if grid.is_scrollback() {
-                    CursorShape::Hidden as u32
-                }
-                else {
-                    self.uniform.cursor_style
-                },
-                ..self.uniform
-            }),
+            bytemuck::bytes_of(&self.uniform),
         );
 
         // デバッグテクスチャの描画

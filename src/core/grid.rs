@@ -287,6 +287,9 @@ impl Grid {
             self.buffer.len() - self.rows - self.viewport_offset + row;
         &self.buffer[buffer_index].inner
     }
+    pub fn viewport_offset(&self) -> usize {
+        self.viewport_offset
+    }
     pub fn scroll(&mut self, lines: isize) {
         self.viewport_offset = self
             .viewport_offset
@@ -298,9 +301,6 @@ impl Grid {
     }
     fn scrollback_len(&self) -> usize {
         self.buffer.len() - self.rows
-    }
-    pub fn is_scrollback(&self) -> bool {
-        self.viewport_offset != 0
     }
     fn cell_at_cursor(&mut self) -> &mut Cell {
         // 本来なら起こらない
