@@ -311,6 +311,7 @@ pub struct Pty {
 impl Pty {
     pub fn new(
         shell: &str,
+        args: &[&str],
         size: portable_pty::PtySize,
         notify: Box<dyn Fn() + Send>,
         on_exit: Box<dyn FnOnce() + Send>,
@@ -320,7 +321,8 @@ impl Pty {
         let system = native_pty_system();
         let PtyPair { slave, master } = system.openpty(size)?;
 
-        let cmd = CommandBuilder::new(shell);
+        let mut cmd = CommandBuilder::new(shell);
+        cmd.args(args);
         let mut shell = slave.spawn_command(cmd)?;
 
         let reader = master.try_clone_reader()?;
@@ -393,6 +395,7 @@ impl Terminal {
         cols: usize,
         max_scrollback: usize,
         shell: &str,
+        args: &[&str],
         notify: Box<dyn Fn() + Send>,
         on_exit: Box<dyn FnOnce() + Send>,
     ) -> anyhow::Result<Self> {
@@ -400,6 +403,7 @@ impl Terminal {
         let parser = vte::Parser::new();
         let pty = Pty::new(
             shell,
+            args,
             portable_pty::PtySize {
                 rows: rows as u16,
                 cols: cols as u16,

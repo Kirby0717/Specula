@@ -48,9 +48,7 @@ impl App {
             cols as usize,
             1_000_000,
             "nu",
-            //"powershell",
-            //"bash",
-            //"cmd",
+            &["--no-history"],
             notify,
             on_exit,
         )
