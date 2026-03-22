@@ -38,7 +38,7 @@ impl TerminalCore {
         Self {
             grid: Grid::new(rows, cols, max_scrollback),
             alt_grid: Grid::new(rows, cols, 0),
-            mode: TerminalMode::empty(),
+            mode: TerminalMode::CURSOR_VISIBLE,
             write_back: vec![],
         }
     }
@@ -71,7 +71,10 @@ impl TerminalCore {
                     self.alt_grid.clear();
                 }
             }
-            2004 => { /* ブラケットペースト */ }
+            // ブラケットペースト
+            2004 => {
+                self.mode.set(TerminalMode::BRACKETED_PASTE, enable);
+            }
             // カーソル表示/非表示
             25 => {
                 self.mode.set(TerminalMode::CURSOR_VISIBLE, enable);
@@ -446,6 +449,17 @@ impl Terminal {
     pub fn write(&mut self, data: &[u8]) {
         self.core.active_grid_mut().scroll_to_bottom();
         self.pty.writer.write_all(data).ok();
+    }
+    pub fn paste(&mut self, text: &str) {
+        self.core.active_grid_mut().scroll_to_bottom();
+        if self.core.mode.contains(TerminalMode::BRACKETED_PASTE) {
+            self.pty.writer.write_all(b"\x1b[200~").ok();
+            self.pty.writer.write_all(text.as_bytes()).ok();
+            self.pty.writer.write_all(b"\x1b[201~").ok();
+        }
+        else {
+            self.pty.writer.write_all(text.as_bytes()).ok();
+        }
     }
     pub fn cursor(&self) -> &CursorState {
         self.active_grid().cursor()
