@@ -28,6 +28,8 @@ bitflags::bitflags! {
         const MOUSE_SGR        = 1 << 6;   // ESC[?1006h
         // フォーカス状態を送信
         const FOCUS_REPORT     = 1 << 7;   // ESC[?1004h
+        // 矢印キーで送信するシーケンスの形式切り替え
+        const ARROW_CKM        = 1 << 8;   // ESC[?1h/l
     }
 }
 
@@ -128,6 +130,11 @@ impl TerminalCore {
             9001 => {
                 log::debug!("Win32 Input Mode (9001): 未実装のため無視");
             }
+            // 矢印キーで送信するシーケンスの形式
+            1 => {
+                self.mode.set(TerminalMode::ARROW_CKM, enable);
+            }
+
             _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
@@ -240,6 +247,7 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
                     std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
                 });
             }
+
             _ => log::warn!("未対応 SGR: code={code}",),
         }
     }
@@ -261,6 +269,7 @@ impl vte::Perform for TerminalCore {
             0x08 => grid.backspace(),
             // タブ HT 次のタブストップへ移動
             0x09 => grid.tab(),
+
             _ => log::warn!("未対応の制御文字: 0x{:02X}", byte),
         }
     }
@@ -405,6 +414,7 @@ impl vte::Perform for TerminalCore {
             // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
             (b'8', []) => grid.restore_cursor(),
+
             _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
@@ -556,6 +566,22 @@ impl Terminal {
         }
         else {
             self.pty.writer.write_all(text.as_bytes()).ok();
+        }
+    }
+    pub fn write_arrow(&mut self, arrow: winit::keyboard::NamedKey) {
+        use winit::keyboard::NamedKey;
+        let letter = match arrow {
+            NamedKey::ArrowUp => b'A',
+            NamedKey::ArrowDown => b'B',
+            NamedKey::ArrowRight => b'C',
+            NamedKey::ArrowLeft => b'D',
+            _ => return,
+        };
+        if self.core.mode.contains(TerminalMode::ARROW_CKM) {
+            self.write(&[0x1b, b'O', letter]);
+        }
+        else {
+            self.write(&[0x1b, b'[', letter]);
         }
     }
     pub fn cursor(&self) -> &CursorState {
