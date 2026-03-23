@@ -29,7 +29,9 @@ bitflags::bitflags! {
         // フォーカス状態を送信
         const FOCUS_REPORT     = 1 << 7;   // ESC[?1004h
         // 矢印キーで送信するシーケンスの形式切り替え
-        const ARROW_CKM        = 1 << 8;   // ESC[?1h/l
+        const DECCKM           = 1 << 8;   // ESC[?1h/l
+        // テンキーで送信するシーケンスの形式切り替え
+        const DECKPAM          = 1 << 9;   // ESC = / ESC >
     }
 }
 
@@ -132,7 +134,7 @@ impl TerminalCore {
             }
             // 矢印キーで送信するシーケンスの形式
             1 => {
-                self.mode.set(TerminalMode::ARROW_CKM, enable);
+                self.mode.set(TerminalMode::DECCKM, enable);
             }
 
             _ => log::warn!("未対応 DEC mode: {mode}"),
@@ -414,6 +416,9 @@ impl vte::Perform for TerminalCore {
             // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
             (b'8', []) => grid.restore_cursor(),
+            // テンキーの送信するシーケンスの形式
+            (b'=', []) => self.mode.insert(TerminalMode::DECKPAM),
+            (b'>', []) => self.mode.remove(TerminalMode::DECKPAM),
 
             _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
@@ -577,7 +582,7 @@ impl Terminal {
             NamedKey::ArrowLeft => b'D',
             _ => return,
         };
-        if self.core.mode.contains(TerminalMode::ARROW_CKM) {
+        if self.core.mode.contains(TerminalMode::DECCKM) {
             self.write(&[0x1b, b'O', letter]);
         }
         else {
