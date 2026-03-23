@@ -74,14 +74,6 @@ pub struct GpuCell {
     bg: [f32; 4],
 }
 
-#[repr(u32)]
-#[allow(unused)]
-pub enum CursorShape {
-    Hidden = 0,
-    Block = 1,
-    Underline = 2,
-    Bar = 3,
-}
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GridUniform {
@@ -142,7 +134,7 @@ impl Renderer {
                 let point = terminal.cursor().point;
                 [point.col as u32, point.row as u32]
             },
-            cursor_style: CursorShape::Block as u32,
+            cursor_style: terminal.cursor_style() as u32,
             _padding2: Default::default(),
         };
         let uniform_buffer =
@@ -477,7 +469,7 @@ impl Renderer {
                         self.uniform.cursor_style
                     }
                     else {
-                        CursorShape::Hidden as u32
+                        crate::core::CursorStyle::Hidden as u32
                     }
                 },
                 ..self.uniform
