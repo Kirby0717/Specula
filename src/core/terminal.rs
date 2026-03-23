@@ -167,6 +167,11 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             1 => {
                 template.flags.insert(CellFlags::BOLD);
             }
+            // 太字/薄字のリセット
+            22 => {
+                template.flags.remove(CellFlags::BOLD);
+                template.flags.remove(CellFlags::DIM);
+            }
             // 前景色
             30..=37 => {
                 template.fg = Color::Named(unsafe {
