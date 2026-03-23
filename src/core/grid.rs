@@ -1,12 +1,6 @@
-use super::cell::{Cell, CellFlags};
+use super::cell::{Cell, CellFlags, Point};
 
 use std::collections::VecDeque;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Point {
-    pub row: usize,
-    pub col: usize,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CursorState {
