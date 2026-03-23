@@ -341,6 +341,9 @@ impl vte::Perform for TerminalCore {
         self.active_grid_mut().scroll_to_bottom();
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
+            // ST (String Terminator) — 単独で届いた場合は無視
+            (b'\\', []) => {}
+            // 行挿入
             (b'M', []) => grid.reverse_index(),
             // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
