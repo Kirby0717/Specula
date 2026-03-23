@@ -110,7 +110,14 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         // 減光
         if (flags & 0x0002) != 0 {}
         // 斜体
-        if (flags & 0x0004) != 0 {}
+        if (flags & 0x0004) != 0 {
+            let skew = 0.2;
+            var local_pos = local_pos;
+            local_pos.x     -= u32(skew * (cell_size.y - f32(local_pos.y)));
+            let uv = vec2<f32>(slot_pos * vec2<u32>(cell_size) + local_pos) / atlas_size;
+            let alpha = textureSample(atlas, s, uv).r;
+            color = mix(cell.bg, cell.fg, alpha);
+        }
         // 下線
         if (flags & 0x0008) != 0 {
             if u32(cell_size.y) - 2 <= local_pos.y {
