@@ -1,5 +1,5 @@
 use super::{GlyphAtlas, GpuContext, Renderer};
-use crate::core::{Terminal, TerminalMode};
+use crate::core::{Point, Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -15,13 +15,25 @@ pub enum TermEvent {
     PtyExit,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 enum MouseButton {
     Left,
     Middle,
     Right,
+    #[default]
+    None,
     ScrollUp,
     ScrollDown,
+}
+impl MouseButton {
+    fn is_pressed(self) -> bool {
+        if MouseButton::None == self {
+            false
+        }
+        else {
+            true
+        }
+    }
 }
 impl TryFrom<winit::event::MouseButton> for MouseButton {
     type Error = ();
@@ -57,6 +69,7 @@ impl MouseEvent {
             MouseButton::Left => 0,
             MouseButton::Middle => 1,
             MouseButton::Right => 2,
+            MouseButton::None => 3,
             MouseButton::ScrollUp => 64,
             MouseButton::ScrollDown => 65,
         };
@@ -126,8 +139,8 @@ struct App {
     terminal: Terminal,
 
     modifiers: Modifiers,
-    mouse_cell: (usize, usize),
-    mouse_state: Option<MouseButton>,
+    mouse_cell: Point,
+    mouse_state: MouseButton,
 }
 impl App {
     fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
@@ -169,8 +182,8 @@ impl App {
             terminal,
 
             modifiers: Modifiers::default(),
-            mouse_cell: (0, 0),
-            mouse_state: None,
+            mouse_cell: Point::default(),
+            mouse_state: MouseButton::default(),
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -183,27 +196,35 @@ impl App {
         self.terminal.resize(rows, cols);
         self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
     }
-    fn convert_mouse_event(
+    fn convert_mouse_button_event(
         &mut self,
-        button: Option<MouseButton>,
+        button: MouseButton,
     ) -> MouseEvent {
+        self.mouse_state = button;
         MouseEvent {
-            kind: if button.is_some() {
-                if self.mouse_state.is_some() {
-                    MouseEventKind::Motion
-                }
-                else {
-                    self.mouse_state = button;
-                    MouseEventKind::Press
-                }
+            kind: if self.mouse_state.is_pressed() {
+                MouseEventKind::Press
             }
             else {
-                self.mouse_state = button;
                 MouseEventKind::Release
             },
-            button: button.unwrap_or(MouseButton::Left),
-            col: self.mouse_cell.0,
-            row: self.mouse_cell.1,
+            button,
+            col: self.mouse_cell.col,
+            row: self.mouse_cell.row,
+            shift: self.modifiers.state().shift_key(),
+            alt: self.modifiers.state().alt_key(),
+            ctrl: self.modifiers.state().control_key(),
+        }
+    }
+    fn convert_mouse_cursor_event(
+        &mut self,
+        button: MouseButton,
+    ) -> MouseEvent {
+        MouseEvent {
+            kind: MouseEventKind::Motion,
+            button,
+            col: self.mouse_cell.col,
+            row: self.mouse_cell.row,
             shift: self.modifiers.state().shift_key(),
             alt: self.modifiers.state().alt_key(),
             ctrl: self.modifiers.state().control_key(),
@@ -216,12 +237,12 @@ impl App {
                 | TerminalMode::MOUSE_MOTION,
         )
     }
-    fn pixel_to_cell(&self, x: f64, y: f64) -> (usize, usize) {
-        let row = (y / self.atlas.cell_width as f64) as usize;
-        let col = (x / self.atlas.cell_height as f64) as usize;
+    fn pixel_to_cell(&self, x: f64, y: f64) -> Point {
+        let row = (y / self.atlas.cell_height as f64) as usize;
+        let col = (x / self.atlas.cell_width as f64) as usize;
         let col = col.min(self.terminal.grid_cols() - 1);
         let row = row.min(self.terminal.grid_rows() - 1);
-        (row, col)
+        Point { row, col }
     }
 }
 
@@ -293,16 +314,17 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 if app.mouse_cell == new_cell {
                     return;
                 }
+                app.mouse_cell = new_cell;
 
                 let mode = app.terminal.mode();
                 if mode.contains(TerminalMode::MOUSE_MOTION)
                     || (mode.contains(TerminalMode::MOUSE_DRAG)
-                        && app.mouse_state.is_some())
+                        && app.mouse_state.is_pressed())
                 {
                     let sgr_mode =
                         app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
                     let data = app
-                        .convert_mouse_event(app.mouse_state)
+                        .convert_mouse_cursor_event(app.mouse_state)
                         .encode_mouse(&app.modifiers, sgr_mode);
                     app.terminal.write(&data);
                 }
@@ -314,15 +336,15 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 };
 
                 let button = if state.is_pressed() {
-                    Some(button)
+                    button
                 }
                 else {
-                    None
+                    MouseButton::None
                 };
                 let sgr_mode =
                     app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
                 let data = app
-                    .convert_mouse_event(button)
+                    .convert_mouse_button_event(button)
                     .encode_mouse(&app.modifiers, sgr_mode);
                 if app.mouse_report_active() {
                     app.terminal.write(&data);
@@ -349,7 +371,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                         app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
                     for _ in 0..count {
                         let data = app
-                            .convert_mouse_event(Some(button))
+                            .convert_mouse_button_event(button)
                             .encode_mouse(&app.modifiers, sgr_mode);
                         app.terminal.write(&data);
                     }

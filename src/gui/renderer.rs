@@ -139,7 +139,7 @@ impl Renderer {
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("CellBuffer"),
+                label: Some("UniformBuffer"),
                 contents: bytemuck::bytes_of(&uniform),
                 usage: wgpu::BufferUsages::UNIFORM
                     | wgpu::BufferUsages::COPY_DST,
@@ -476,7 +476,7 @@ impl Renderer {
             }),
         );
 
-        // デバッグテクスチャの描画
+        // グリッドの描画
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.draw(0..6, 0..1);

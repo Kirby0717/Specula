@@ -63,8 +63,17 @@ static PALETTE: [[u8; 3]; 18] = [
     [0, 0, 0],
 ];
 impl NamedColor {
+    pub fn from_index(index: u8) -> Option<Self> {
+        if index < 18 {
+            // 18色まで定義されているので安全
+            Some(unsafe { std::mem::transmute::<u8, NamedColor>(index) })
+        }
+        else {
+            None
+        }
+    }
     pub fn into_color(self) -> [u8; 3] {
-        PALETTE[unsafe { std::mem::transmute::<NamedColor, u8>(self) as usize }]
+        PALETTE[self as u8 as usize]
     }
 }
 
@@ -151,4 +160,10 @@ impl Default for Cell {
             flags: CellFlags::empty(),
         }
     }
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct Point {
+    pub row: usize,
+    pub col: usize,
 }

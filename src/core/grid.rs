@@ -1,12 +1,6 @@
-use super::cell::{Cell, CellFlags};
+use super::cell::{Cell, CellFlags, Point};
 
 use std::collections::VecDeque;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Point {
-    pub row: usize,
-    pub col: usize,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CursorState {
@@ -101,7 +95,8 @@ impl Grid {
                 }
             }
             else {
-                let delete = self.rows - rows;
+                let delete = (self.rows - rows)
+                    .min(self.rows - self.cursor.point.row - 1);
                 for _ in 0..delete {
                     self.buffer.pop_back();
                 }
@@ -155,7 +150,8 @@ impl Grid {
         &mut self.cursor.template
     }
     pub fn cursor_up(&mut self, n: usize) {
-        self.cursor.point.row = self.cursor.point.row.wrapping_sub(n);
+        self.cursor.point.row = self.cursor.point.row.saturating_sub(n);
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn cursor_down(&mut self, n: usize) {
@@ -169,20 +165,24 @@ impl Grid {
         self.cursor.pending_wrap = false;
     }
     pub fn cursor_left(&mut self, n: usize) {
-        self.cursor.point.col = self.cursor.point.col.wrapping_sub(n);
+        self.cursor.point.col = self.cursor.point.col.saturating_sub(n);
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto(&mut self, row: usize, col: usize) {
         self.cursor.point.row = row;
         self.cursor.point.col = col;
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto_row(&mut self, row: usize) {
         self.cursor.point.row = row;
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn cursor_goto_col(&mut self, col: usize) {
         self.cursor.point.col = col;
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     // 0: カーソル以下を消去
@@ -260,14 +260,17 @@ impl Grid {
         else {
             self.cursor.point.row += 1;
         }
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn carriage_return(&mut self) {
         self.cursor.point.col = 0;
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn backspace(&mut self) {
-        self.cursor.point.col = self.cursor.point.col.wrapping_sub(1);
+        self.cursor.point.col = self.cursor.point.col.saturating_sub(1);
+        self.clamp_cursor();
         self.cursor.pending_wrap = false;
     }
     pub fn tab(&mut self) {

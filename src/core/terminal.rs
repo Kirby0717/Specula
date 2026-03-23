@@ -17,7 +17,7 @@ bitflags::bitflags! {
         // コピペの目印
         const BRACKETED_PASTE  = 1 << 1;   // ESC[?2004h/l
         // カーソル表示
-        const CURSOR_VISIBLE   = 1 << 2;   // ESC[?23h/l
+        const CURSOR_VISIBLE   = 1 << 2;   // ESC[?25h/l
         // マウスのボタンを送信
         const MOUSE_REPORT     = 1 << 3;   // ESC[?1000h
         // マウスのドラッグを送信
@@ -60,7 +60,7 @@ pub struct TerminalCore {
     cursor_style: CursorStyle,
 }
 impl TerminalCore {
-    pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
+    fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
         Self {
             grid: Grid::new(rows, cols, max_scrollback),
             alt_grid: Grid::new(rows, cols, 0),
@@ -69,7 +69,7 @@ impl TerminalCore {
             cursor_style: CursorStyle::Block,
         }
     }
-    pub fn resize(&mut self, rows: usize, cols: usize) {
+    fn resize(&mut self, rows: usize, cols: usize) {
         self.grid.resize(rows, cols);
         self.alt_grid.resize(rows, cols);
     }
@@ -222,9 +222,9 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             }
             // 前景色
             30..=37 => {
-                template.fg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 30)
-                });
+                template.fg = Color::Named(
+                    NamedColor::from_index((code - 30) as u8).unwrap(),
+                );
             }
             // 拡張前景色
             38 => {
@@ -236,9 +236,9 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             39 => template.fg = Color::Named(NamedColor::Foreground),
             // 背景色
             40..=47 => {
-                template.bg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 40)
-                });
+                template.bg = Color::Named(
+                    NamedColor::from_index((code - 40) as u8).unwrap(),
+                );
             }
             // 拡張背景色
             48 => {
@@ -250,15 +250,15 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             49 => template.bg = Color::Named(NamedColor::Background),
             // 高輝度前景色
             90..=97 => {
-                template.fg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 90 + 8)
-                });
+                template.fg = Color::Named(
+                    NamedColor::from_index((code - 90 + 8) as u8).unwrap(),
+                );
             }
             // 高輝度前景色
             100..=107 => {
-                template.bg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
-                });
+                template.bg = Color::Named(
+                    NamedColor::from_index((code - 100 + 8) as u8).unwrap(),
+                );
             }
 
             _ => log::warn!("未対応 SGR: code={code}",),
@@ -454,7 +454,7 @@ pub struct Pty {
     pty_rx: mpsc::Receiver<Vec<u8>>,
 }
 impl Pty {
-    pub fn new(
+    fn new(
         shell: &str,
         args: &[&str],
         size: portable_pty::PtySize,
@@ -510,7 +510,7 @@ impl Pty {
             pty_rx: rx,
         })
     }
-    pub fn resize(&mut self, rows: u16, cols: u16) {
+    fn resize(&mut self, rows: u16, cols: u16) {
         if let Ok(size) = self.master.get_size()
             && size.rows == rows
             && size.cols == cols
@@ -530,11 +530,11 @@ impl Pty {
 
 pub struct Terminal {
     /// ターミナル本体
-    pub core: TerminalCore,
+    core: TerminalCore,
     /// VTEパーサー
-    pub parser: vte::Parser,
+    parser: vte::Parser,
     // PTY
-    pub pty: Pty,
+    pty: Pty,
 }
 impl Terminal {
     pub fn new(
