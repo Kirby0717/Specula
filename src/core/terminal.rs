@@ -167,6 +167,20 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             1 => {
                 template.flags.insert(CellFlags::BOLD);
             }
+            // アンダーライン
+            4 => {
+                template.flags.insert(CellFlags::UNDERLINE);
+            }
+            24 => {
+                template.flags.remove(CellFlags::UNDERLINE);
+            }
+            // 反転
+            7 => {
+                template.flags.insert(CellFlags::INVERSE);
+            }
+            27 => {
+                template.flags.remove(CellFlags::INVERSE);
+            }
             // 太字/薄字のリセット
             22 => {
                 template.flags.remove(CellFlags::BOLD);

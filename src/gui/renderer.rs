@@ -67,8 +67,9 @@ impl GpuContext {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuCell {
     glyph_index: u32,
+    flags: u32,
     // vec4のアライメント用パディング
-    _pad: [u32; 3],
+    _pad: [u32; 2],
     fg: [f32; 4],
     bg: [f32; 4],
 }
@@ -397,13 +398,15 @@ impl Renderer {
                     let cell = &row[x];
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
+                    let flags = cell.flags.bits() as u32;
 
-                    // ワイドの左側
+                    // ワイドの右側
                     if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
                         && let Some(index) = wide_right
                     {
                         cell_buffer.push(GpuCell {
                             glyph_index: index,
+                            flags,
                             _pad: Default::default(),
                             fg,
                             bg,
@@ -411,6 +414,7 @@ impl Renderer {
                         continue;
                     }
                     wide_right = None;
+
                     let glyph_index = atlas.get_or_insert(
                         gpu,
                         cell.c,
@@ -425,6 +429,7 @@ impl Renderer {
                     };
                     cell_buffer.push(GpuCell {
                         glyph_index: index,
+                        flags,
                         _pad: Default::default(),
                         fg,
                         bg,
@@ -435,6 +440,7 @@ impl Renderer {
                     let cell = crate::core::Cell::default();
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
+                    let flags = cell.flags.bits() as u32;
                     let GlyphIndex::Narrow(glyph_index) =
                         atlas.get_or_insert(gpu, ' ', false)
                     else {
@@ -442,6 +448,7 @@ impl Renderer {
                     };
                     cell_buffer.push(GpuCell {
                         glyph_index,
+                        flags,
                         _pad: Default::default(),
                         fg,
                         bg,
