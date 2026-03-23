@@ -237,6 +237,22 @@ impl Grid {
             _ => log::debug!("未対応の行消去モード: {}", mode),
         }
     }
+    pub fn erase_chars(&mut self, n: usize) {
+        let cell = Cell {
+            bg: self.cursor_template().bg,
+            ..Default::default()
+        };
+        let col = self.cursor.point.col;
+        let cols = self.cols;
+        let row = self.screen_row_mut(self.cursor.point.row);
+        for i in 0..n {
+            let c = col + i;
+            if c >= cols {
+                break;
+            }
+            row[c] = cell;
+        }
+    }
     pub fn linefeed(&mut self) {
         if self.rows - 1 == self.cursor.point.row {
             self.add_row();
