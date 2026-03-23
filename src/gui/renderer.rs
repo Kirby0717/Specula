@@ -139,7 +139,7 @@ impl Renderer {
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("CellBuffer"),
+                label: Some("UniformBuffer"),
                 contents: bytemuck::bytes_of(&uniform),
                 usage: wgpu::BufferUsages::UNIFORM
                     | wgpu::BufferUsages::COPY_DST,
