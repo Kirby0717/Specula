@@ -200,18 +200,12 @@ impl App {
         &mut self,
         button: MouseButton,
     ) -> MouseEvent {
+        self.mouse_state = button;
         MouseEvent {
-            kind: if button.is_pressed() {
-                if self.mouse_state.is_pressed() {
-                    MouseEventKind::Motion
-                }
-                else {
-                    self.mouse_state = button;
-                    MouseEventKind::Press
-                }
+            kind: if self.mouse_state.is_pressed() {
+                MouseEventKind::Press
             }
             else {
-                self.mouse_state = button;
                 MouseEventKind::Release
             },
             button,
