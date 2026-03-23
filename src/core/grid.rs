@@ -413,12 +413,12 @@ impl Grid {
             let cell = self.cell_at_cursor();
             *cell = template;
             cell.c = c;
-            cell.flags = CellFlags::WIDE_CHAR;
+            cell.flags.insert(CellFlags::WIDE_CHAR);
             self.cursor_right(1);
             let cell = self.cell_at_cursor();
             *cell = template;
             cell.c = ' ';
-            cell.flags = CellFlags::WIDE_CHAR_SPACER;
+            cell.flags.insert(CellFlags::WIDE_CHAR_SPACER);
         }
         //半角
         else {
@@ -426,7 +426,6 @@ impl Grid {
             let cell = self.cell_at_cursor();
             *cell = template;
             cell.c = c;
-            cell.flags = CellFlags::empty();
         }
 
         // 行末処理
