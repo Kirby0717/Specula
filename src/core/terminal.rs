@@ -370,6 +370,8 @@ impl Pty {
 
         let mut cmd = CommandBuilder::new(shell);
         cmd.args(args);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
         let mut shell = slave.spawn_command(cmd)?;
 
         let reader = master.try_clone_reader()?;
