@@ -397,6 +397,14 @@ impl vte::Perform for TerminalCore {
                 log::debug!("未対応 XTWINOPS: Ps={ps}");
             }
 
+            // キーボード拡張の確認
+            ('u', [b'?']) => {
+                log::debug!("Kitty keyboard protocol query: 未対応");
+            }
+            ('m', [b'>']) => {
+                log::debug!("xterm modifyOtherKeys reset: 未対応");
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
