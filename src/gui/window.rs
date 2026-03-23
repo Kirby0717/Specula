@@ -217,8 +217,8 @@ impl App {
         )
     }
     fn pixel_to_cell(&self, x: f64, y: f64) -> (usize, usize) {
-        let row = (y / self.atlas.cell_width as f64) as usize;
-        let col = (x / self.atlas.cell_height as f64) as usize;
+        let row = (y / self.atlas.cell_height as f64) as usize;
+        let col = (x / self.atlas.cell_width as f64) as usize;
         let col = col.min(self.terminal.grid_cols() - 1);
         let row = row.min(self.terminal.grid_rows() - 1);
         (row, col)
