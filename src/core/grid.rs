@@ -101,7 +101,8 @@ impl Grid {
                 }
             }
             else {
-                let delete = self.rows - rows;
+                let delete = (self.rows - rows)
+                    .min(self.rows - self.cursor.point.row - 1);
                 for _ in 0..delete {
                     self.buffer.pop_back();
                 }
