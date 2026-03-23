@@ -60,7 +60,7 @@ pub struct TerminalCore {
     cursor_style: CursorStyle,
 }
 impl TerminalCore {
-    pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
+    fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
         Self {
             grid: Grid::new(rows, cols, max_scrollback),
             alt_grid: Grid::new(rows, cols, 0),
@@ -69,7 +69,7 @@ impl TerminalCore {
             cursor_style: CursorStyle::Block,
         }
     }
-    pub fn resize(&mut self, rows: usize, cols: usize) {
+    fn resize(&mut self, rows: usize, cols: usize) {
         self.grid.resize(rows, cols);
         self.alt_grid.resize(rows, cols);
     }
@@ -454,7 +454,7 @@ pub struct Pty {
     pty_rx: mpsc::Receiver<Vec<u8>>,
 }
 impl Pty {
-    pub fn new(
+    fn new(
         shell: &str,
         args: &[&str],
         size: portable_pty::PtySize,
@@ -510,7 +510,7 @@ impl Pty {
             pty_rx: rx,
         })
     }
-    pub fn resize(&mut self, rows: u16, cols: u16) {
+    fn resize(&mut self, rows: u16, cols: u16) {
         if let Ok(size) = self.master.get_size()
             && size.rows == rows
             && size.cols == cols
@@ -530,11 +530,11 @@ impl Pty {
 
 pub struct Terminal {
     /// ターミナル本体
-    pub core: TerminalCore,
+    core: TerminalCore,
     /// VTEパーサー
-    pub parser: vte::Parser,
+    parser: vte::Parser,
     // PTY
-    pub pty: Pty,
+    pty: Pty,
 }
 impl Terminal {
     pub fn new(
