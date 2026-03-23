@@ -31,6 +31,17 @@ bitflags::bitflags! {
     }
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorStyle {
+    Hidden = 0,
+    Block = 1,
+    Underline = 2,
+    Bar = 3,
+    BlinkBlock = 4,
+    BlinkUnderline = 5,
+    BlinkBar = 6,
+}
 #[derive(Clone, Debug)]
 pub struct TerminalCore {
     /// メイン画面のグリッド
@@ -41,6 +52,8 @@ pub struct TerminalCore {
     mode: TerminalMode,
     /// PTY に書き戻すデータのバッファ
     write_back: Vec<u8>,
+    // カーソルの種類
+    cursor_style: CursorStyle,
 }
 impl TerminalCore {
     pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
@@ -49,6 +62,7 @@ impl TerminalCore {
             alt_grid: Grid::new(rows, cols, 0),
             mode: TerminalMode::CURSOR_VISIBLE,
             write_back: vec![],
+            cursor_style: CursorStyle::Block,
         }
     }
     pub fn resize(&mut self, rows: usize, cols: usize) {
@@ -110,6 +124,10 @@ impl TerminalCore {
             1004 => {
                 self.mode.set(TerminalMode::FOCUS_REPORT, enable);
             }
+            // Win32 Input Mode — 現時点では非対応
+            9001 => {
+                log::debug!("Win32 Input Mode (9001): 未実装のため無視");
+            }
             _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
@@ -162,6 +180,25 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             // 太字
             1 => {
                 template.flags.insert(CellFlags::BOLD);
+            }
+            // アンダーライン
+            4 => {
+                template.flags.insert(CellFlags::UNDERLINE);
+            }
+            24 => {
+                template.flags.remove(CellFlags::UNDERLINE);
+            }
+            // 反転
+            7 => {
+                template.flags.insert(CellFlags::INVERSE);
+            }
+            27 => {
+                template.flags.remove(CellFlags::INVERSE);
+            }
+            // 太字/薄字のリセット
+            22 => {
+                template.flags.remove(CellFlags::BOLD);
+                template.flags.remove(CellFlags::DIM);
             }
             // 前景色
             30..=37 => {
@@ -283,6 +320,10 @@ impl vte::Perform for TerminalCore {
                 let mode = param(params, 0, 0);
                 grid.erase_row(mode);
             }
+            ('X', []) => {
+                let n = param(params, 0, 1);
+                grid.erase_chars(n);
+            }
 
             // DSR（デバイス状態レポート）
             ('n', []) => {
@@ -325,6 +366,20 @@ impl vte::Perform for TerminalCore {
                 grid.delete_lines(n);
             }
 
+            // カーソル設定
+            ('q', [b' ']) => {
+                let style = param(params, 0, 0);
+                self.cursor_style = match style {
+                    0 | 1 => CursorStyle::BlinkBlock,
+                    2 => CursorStyle::Block,
+                    3 => CursorStyle::BlinkUnderline,
+                    4 => CursorStyle::Underline,
+                    5 => CursorStyle::BlinkBar,
+                    6 => CursorStyle::Bar,
+                    _ => CursorStyle::BlinkBlock,
+                };
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
@@ -337,6 +392,9 @@ impl vte::Perform for TerminalCore {
         self.active_grid_mut().scroll_to_bottom();
         let grid = self.active_grid_mut();
         match (byte, intermediates) {
+            // ST (String Terminator) — 単独で届いた場合は無視
+            (b'\\', []) => {}
+            // 行挿入
             (b'M', []) => grid.reverse_index(),
             // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
@@ -496,6 +554,9 @@ impl Terminal {
     }
     pub fn cursor(&self) -> &CursorState {
         self.active_grid().cursor()
+    }
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.core.cursor_style
     }
     pub fn grid_rows(&self) -> usize {
         self.core.active_grid().grid_rows()

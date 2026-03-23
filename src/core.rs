@@ -3,4 +3,4 @@ mod grid;
 mod terminal;
 
 pub use cell::{Cell, CellFlags};
-pub use terminal::{Terminal, TerminalMode};
+pub use terminal::{Terminal, TerminalMode, CursorStyle};
