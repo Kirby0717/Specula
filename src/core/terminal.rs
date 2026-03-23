@@ -380,6 +380,12 @@ impl vte::Perform for TerminalCore {
                 };
             }
 
+            // ウィンドウ関連
+            ('t', []) => {
+                let ps = param(params, 0, 0);
+                log::debug!("未対応 XTWINOPS: Ps={ps}");
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
