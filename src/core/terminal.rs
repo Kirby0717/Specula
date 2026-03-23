@@ -292,6 +292,10 @@ impl vte::Perform for TerminalCore {
                 let mode = param(params, 0, 0);
                 grid.erase_row(mode);
             }
+            ('X', []) => {
+                let n = param(params, 0, 1);
+                grid.erase_chars(n);
+            }
 
             // DSR（デバイス状態レポート）
             ('n', []) => {
