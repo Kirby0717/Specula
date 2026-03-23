@@ -412,10 +412,13 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                                 NamedKey::Backspace => "\x7f",
                                 NamedKey::Escape => "\x1b",
                                 NamedKey::Tab => "\t",
-                                NamedKey::ArrowUp => "\x1b[A",
-                                NamedKey::ArrowDown => "\x1b[B",
-                                NamedKey::ArrowRight => "\x1b[C",
-                                NamedKey::ArrowLeft => "\x1b[D",
+                                NamedKey::ArrowUp
+                                | NamedKey::ArrowDown
+                                | NamedKey::ArrowRight
+                                | NamedKey::ArrowLeft => {
+                                    app.terminal.write_arrow(*named_key);
+                                    return;
+                                }
                                 _ => break 'a,
                             };
                             app.terminal.write(data.as_bytes());

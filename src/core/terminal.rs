@@ -28,6 +28,10 @@ bitflags::bitflags! {
         const MOUSE_SGR        = 1 << 6;   // ESC[?1006h
         // フォーカス状態を送信
         const FOCUS_REPORT     = 1 << 7;   // ESC[?1004h
+        // 矢印キーで送信するシーケンスの形式切り替え
+        const DECCKM           = 1 << 8;   // ESC[?1h/l
+        // テンキーで送信するシーケンスの形式切り替え
+        const DECKPAM          = 1 << 9;   // ESC = / ESC >
     }
 }
 
@@ -128,6 +132,11 @@ impl TerminalCore {
             9001 => {
                 log::debug!("Win32 Input Mode (9001): 未実装のため無視");
             }
+            // 矢印キーで送信するシーケンスの形式
+            1 => {
+                self.mode.set(TerminalMode::DECCKM, enable);
+            }
+
             _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
@@ -181,6 +190,22 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             1 => {
                 template.flags.insert(CellFlags::BOLD);
             }
+            // 減光
+            2 => {
+                template.flags.insert(CellFlags::DIM);
+            }
+            // 太字/減光のリセット
+            22 => {
+                template.flags.remove(CellFlags::BOLD);
+                template.flags.remove(CellFlags::DIM);
+            }
+            // イタリック
+            3 => {
+                template.flags.insert(CellFlags::ITALIC);
+            }
+            23 => {
+                template.flags.remove(CellFlags::ITALIC);
+            }
             // アンダーライン
             4 => {
                 template.flags.insert(CellFlags::UNDERLINE);
@@ -194,11 +219,6 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             }
             27 => {
                 template.flags.remove(CellFlags::INVERSE);
-            }
-            // 太字/薄字のリセット
-            22 => {
-                template.flags.remove(CellFlags::BOLD);
-                template.flags.remove(CellFlags::DIM);
             }
             // 前景色
             30..=37 => {
@@ -240,6 +260,7 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
                     std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
                 });
             }
+
             _ => log::warn!("未対応 SGR: code={code}",),
         }
     }
@@ -261,6 +282,7 @@ impl vte::Perform for TerminalCore {
             0x08 => grid.backspace(),
             // タブ HT 次のタブストップへ移動
             0x09 => grid.tab(),
+
             _ => log::warn!("未対応の制御文字: 0x{:02X}", byte),
         }
     }
@@ -380,6 +402,20 @@ impl vte::Perform for TerminalCore {
                 };
             }
 
+            // ウィンドウ関連
+            ('t', []) => {
+                let ps = param(params, 0, 0);
+                log::debug!("未対応 XTWINOPS: Ps={ps}");
+            }
+
+            // キーボード拡張の確認
+            ('u', [b'?']) => {
+                log::debug!("Kitty keyboard protocol query: 未対応");
+            }
+            ('m', [b'>']) => {
+                log::debug!("xterm modifyOtherKeys reset: 未対応");
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
@@ -399,6 +435,10 @@ impl vte::Perform for TerminalCore {
             // カーソル保存/復元
             (b'7', []) => grid.save_cursor(),
             (b'8', []) => grid.restore_cursor(),
+            // テンキーの送信するシーケンスの形式
+            (b'=', []) => self.mode.insert(TerminalMode::DECKPAM),
+            (b'>', []) => self.mode.remove(TerminalMode::DECKPAM),
+
             _ => log::warn!(
                 "未対応 ESC: byte='{byte}', intermediates={intermediates:?}",
             ),
@@ -428,6 +468,8 @@ impl Pty {
 
         let mut cmd = CommandBuilder::new(shell);
         cmd.args(args);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
         let mut shell = slave.spawn_command(cmd)?;
 
         let reader = master.try_clone_reader()?;
@@ -548,6 +590,22 @@ impl Terminal {
         }
         else {
             self.pty.writer.write_all(text.as_bytes()).ok();
+        }
+    }
+    pub fn write_arrow(&mut self, arrow: winit::keyboard::NamedKey) {
+        use winit::keyboard::NamedKey;
+        let letter = match arrow {
+            NamedKey::ArrowUp => b'A',
+            NamedKey::ArrowDown => b'B',
+            NamedKey::ArrowRight => b'C',
+            NamedKey::ArrowLeft => b'D',
+            _ => return,
+        };
+        if self.core.mode.contains(TerminalMode::DECCKM) {
+            self.write(&[0x1b, b'O', letter]);
+        }
+        else {
+            self.write(&[0x1b, b'[', letter]);
         }
     }
     pub fn cursor(&self) -> &CursorState {
