@@ -190,6 +190,22 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             1 => {
                 template.flags.insert(CellFlags::BOLD);
             }
+            // 減光
+            2 => {
+                template.flags.insert(CellFlags::DIM);
+            }
+            // 太字/減光のリセット
+            22 => {
+                template.flags.remove(CellFlags::BOLD);
+                template.flags.remove(CellFlags::DIM);
+            }
+            // イタリック
+            3 => {
+                template.flags.insert(CellFlags::ITALIC);
+            }
+            23 => {
+                template.flags.remove(CellFlags::ITALIC);
+            }
             // アンダーライン
             4 => {
                 template.flags.insert(CellFlags::UNDERLINE);
@@ -203,11 +219,6 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             }
             27 => {
                 template.flags.remove(CellFlags::INVERSE);
-            }
-            // 太字/薄字のリセット
-            22 => {
-                template.flags.remove(CellFlags::BOLD);
-                template.flags.remove(CellFlags::DIM);
             }
             // 前景色
             30..=37 => {
