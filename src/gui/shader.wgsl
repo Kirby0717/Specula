@@ -82,6 +82,22 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
                     color = cell.fg;
                 }
             }
+            // ブロック点滅
+            case 4: {
+                color = mix(cell.fg, cell.bg, alpha);
+            }
+            // 下線点滅
+            case 5: {
+                if u32(cell_size.y) - 2 <= local_pos.y {
+                    color = cell.fg;
+                }
+            }
+            // 縦線点滅
+            case 6: {
+                if local_pos.x < 2 {
+                    color = cell.fg;
+                }
+            }
             // 不正なカーソルは紫
             default: {
                 color = vec4<f32>(1.0, 0.0, 1.0, 1.0);

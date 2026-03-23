@@ -31,6 +31,17 @@ bitflags::bitflags! {
     }
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorStyle {
+    Hidden = 0,
+    Block = 1,
+    Underline = 2,
+    Bar = 3,
+    BlinkBlock = 4,
+    BlinkUnderline = 5,
+    BlinkBar = 6,
+}
 #[derive(Clone, Debug)]
 pub struct TerminalCore {
     /// メイン画面のグリッド
@@ -41,6 +52,8 @@ pub struct TerminalCore {
     mode: TerminalMode,
     /// PTY に書き戻すデータのバッファ
     write_back: Vec<u8>,
+    // カーソルの種類
+    cursor_style: CursorStyle,
 }
 impl TerminalCore {
     pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
@@ -49,6 +62,7 @@ impl TerminalCore {
             alt_grid: Grid::new(rows, cols, 0),
             mode: TerminalMode::CURSOR_VISIBLE,
             write_back: vec![],
+            cursor_style: CursorStyle::Block,
         }
     }
     pub fn resize(&mut self, rows: usize, cols: usize) {
@@ -352,6 +366,20 @@ impl vte::Perform for TerminalCore {
                 grid.delete_lines(n);
             }
 
+            // カーソル設定
+            ('q', [b' ']) => {
+                let style = param(params, 0, 0);
+                self.cursor_style = match style {
+                    0 | 1 => CursorStyle::BlinkBlock,
+                    2 => CursorStyle::Block,
+                    3 => CursorStyle::BlinkUnderline,
+                    4 => CursorStyle::Underline,
+                    5 => CursorStyle::BlinkBar,
+                    6 => CursorStyle::Bar,
+                    _ => CursorStyle::BlinkBlock,
+                };
+            }
+
             _ => log::warn!(
                 "未対応 CSI: action='{action}', intermediates={intermediates:?}",
             ),
@@ -524,6 +552,9 @@ impl Terminal {
     }
     pub fn cursor(&self) -> &CursorState {
         self.active_grid().cursor()
+    }
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.core.cursor_style
     }
     pub fn grid_rows(&self) -> usize {
         self.core.active_grid().grid_rows()
