@@ -222,9 +222,9 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             }
             // 前景色
             30..=37 => {
-                template.fg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 30)
-                });
+                template.fg = Color::Named(
+                    NamedColor::from_index((code - 30) as u8).unwrap(),
+                );
             }
             // 拡張前景色
             38 => {
@@ -236,9 +236,9 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             39 => template.fg = Color::Named(NamedColor::Foreground),
             // 背景色
             40..=47 => {
-                template.bg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 40)
-                });
+                template.bg = Color::Named(
+                    NamedColor::from_index((code - 40) as u8).unwrap(),
+                );
             }
             // 拡張背景色
             48 => {
@@ -250,15 +250,15 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             49 => template.bg = Color::Named(NamedColor::Background),
             // 高輝度前景色
             90..=97 => {
-                template.fg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 90 + 8)
-                });
+                template.fg = Color::Named(
+                    NamedColor::from_index((code - 90 + 8) as u8).unwrap(),
+                );
             }
             // 高輝度前景色
             100..=107 => {
-                template.bg = Color::Named(unsafe {
-                    std::mem::transmute::<u8, NamedColor>(code as u8 - 100 + 8)
-                });
+                template.bg = Color::Named(
+                    NamedColor::from_index((code - 100 + 8) as u8).unwrap(),
+                );
             }
 
             _ => log::warn!("未対応 SGR: code={code}",),
