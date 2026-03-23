@@ -110,6 +110,10 @@ impl TerminalCore {
             1004 => {
                 self.mode.set(TerminalMode::FOCUS_REPORT, enable);
             }
+            // Win32 Input Mode — 現時点では非対応
+            9001 => {
+                log::debug!("Win32 Input Mode (9001): 未実装のため無視");
+            }
             _ => log::warn!("未対応 DEC mode: {mode}"),
         }
     }
