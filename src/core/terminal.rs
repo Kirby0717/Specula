@@ -17,7 +17,7 @@ bitflags::bitflags! {
         // コピペの目印
         const BRACKETED_PASTE  = 1 << 1;   // ESC[?2004h/l
         // カーソル表示
-        const CURSOR_VISIBLE   = 1 << 2;   // ESC[?23h/l
+        const CURSOR_VISIBLE   = 1 << 2;   // ESC[?25h/l
         // マウスのボタンを送信
         const MOUSE_REPORT     = 1 << 3;   // ESC[?1000h
         // マウスのドラッグを送信
