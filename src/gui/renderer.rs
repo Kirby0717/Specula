@@ -64,7 +64,7 @@ impl GpuContext {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuCell {
     glyph_index: u32,
     // vec4のアライメント用パディング
@@ -82,7 +82,7 @@ pub enum CursorShape {
     Bar = 3,
 }
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GridUniform {
     cell_size: [f32; 2],
     grid_size: [u32; 2],
