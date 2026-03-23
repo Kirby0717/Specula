@@ -1,5 +1,5 @@
 use super::{GlyphAtlas, GpuContext, Renderer};
-use crate::core::Terminal;
+use crate::core::{Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -15,6 +15,109 @@ pub enum TermEvent {
     PtyExit,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    ScrollUp,
+    ScrollDown,
+}
+impl TryFrom<winit::event::MouseButton> for MouseButton {
+    type Error = ();
+    fn try_from(value: winit::event::MouseButton) -> Result<Self, Self::Error> {
+        use winit::event::MouseButton as WinitMouseButton;
+        Ok(match value {
+            WinitMouseButton::Left => MouseButton::Left,
+            WinitMouseButton::Middle => MouseButton::Middle,
+            WinitMouseButton::Right => MouseButton::Right,
+            _ => return Err(()),
+        })
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MouseEventKind {
+    Press,
+    Release,
+    Motion,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MouseEvent {
+    kind: MouseEventKind,
+    button: MouseButton,
+    col: usize, // 0-indexed
+    row: usize, // 0-indexed
+    shift: bool,
+    alt: bool,
+    ctrl: bool,
+}
+impl MouseEvent {
+    fn encode_button(&self, modifiers: &Modifiers) -> u8 {
+        let mut code: u8 = match self.button {
+            MouseButton::Left => 0,
+            MouseButton::Middle => 1,
+            MouseButton::Right => 2,
+            MouseButton::ScrollUp => 64,
+            MouseButton::ScrollDown => 65,
+        };
+
+        if modifiers.state().shift_key() {
+            code += 4;
+        }
+        if modifiers.state().alt_key() {
+            code += 8;
+        }
+        if modifiers.state().control_key() {
+            code += 16;
+        }
+
+        if self.kind == MouseEventKind::Motion {
+            code += 32;
+        }
+
+        code
+    }
+    fn encode_x10(&self, modifiers: &Modifiers) -> Vec<u8> {
+        let mut button = self.encode_button(modifiers);
+        if self.kind == MouseEventKind::Release {
+            button = (button & !0b11) | 3; // 下位2bitを3にする
+        }
+
+        vec![
+            0x1b,
+            b'[',
+            b'M',
+            button + 32,
+            (self.col as u8) + 1 + 32,
+            (self.row as u8) + 1 + 32,
+        ]
+    }
+    fn encode_sgr(&self, modifiers: &Modifiers) -> Vec<u8> {
+        let button = self.encode_button(modifiers);
+        let terminator = match self.kind {
+            MouseEventKind::Release => 'm',
+            _ => 'M',
+        };
+
+        format!(
+            "\x1b[<{};{};{}{}",
+            button,
+            self.col + 1,
+            self.row + 1,
+            terminator,
+        )
+        .into_bytes()
+    }
+    fn encode_mouse(&self, modifiers: &Modifiers, sgr_mode: bool) -> Vec<u8> {
+        if sgr_mode {
+            self.encode_sgr(modifiers)
+        }
+        else {
+            self.encode_x10(modifiers)
+        }
+    }
+}
+
 struct App {
     window: Arc<Window>,
     gpu: GpuContext,
@@ -23,6 +126,8 @@ struct App {
     terminal: Terminal,
 
     modifiers: Modifiers,
+    mouse_cell: (usize, usize),
+    mouse_state: Option<MouseButton>,
 }
 impl App {
     fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
@@ -64,6 +169,8 @@ impl App {
             terminal,
 
             modifiers: Modifiers::default(),
+            mouse_cell: (0, 0),
+            mouse_state: None,
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -75,6 +182,46 @@ impl App {
 
         self.terminal.resize(rows, cols);
         self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
+    }
+    fn convert_mouse_event(
+        &mut self,
+        button: Option<MouseButton>,
+    ) -> MouseEvent {
+        MouseEvent {
+            kind: if button.is_some() {
+                if self.mouse_state.is_some() {
+                    MouseEventKind::Motion
+                }
+                else {
+                    self.mouse_state = button;
+                    MouseEventKind::Press
+                }
+            }
+            else {
+                self.mouse_state = button;
+                MouseEventKind::Release
+            },
+            button: button.unwrap_or(MouseButton::Left),
+            col: self.mouse_cell.0,
+            row: self.mouse_cell.1,
+            shift: self.modifiers.state().shift_key(),
+            alt: self.modifiers.state().alt_key(),
+            ctrl: self.modifiers.state().control_key(),
+        }
+    }
+    fn mouse_report_active(&self) -> bool {
+        self.terminal.mode().intersects(
+            TerminalMode::MOUSE_REPORT
+                | TerminalMode::MOUSE_DRAG
+                | TerminalMode::MOUSE_MOTION,
+        )
+    }
+    fn pixel_to_cell(&self, x: f64, y: f64) -> (usize, usize) {
+        let row = (y / self.atlas.cell_width as f64) as usize;
+        let col = (x / self.atlas.cell_height as f64) as usize;
+        let col = col.min(self.terminal.grid_cols() - 1);
+        let row = row.min(self.terminal.grid_rows() - 1);
+        (row, col)
     }
 }
 
@@ -141,15 +288,84 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 app.modifiers = new_modifiers;
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                use winit::event::*;
-                let MouseScrollDelta::LineDelta(_, delta) = delta
+            WindowEvent::CursorMoved { position, .. } => {
+                let new_cell = app.pixel_to_cell(position.x, position.y);
+                if app.mouse_cell == new_cell {
+                    return;
+                }
+
+                let mode = app.terminal.mode();
+                if mode.contains(TerminalMode::MOUSE_MOTION)
+                    || (mode.contains(TerminalMode::MOUSE_DRAG)
+                        && app.mouse_state.is_some())
+                {
+                    let sgr_mode =
+                        app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
+                    let data = app
+                        .convert_mouse_event(app.mouse_state)
+                        .encode_mouse(&app.modifiers, sgr_mode);
+                    app.terminal.write(&data);
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let Ok(button) = button.try_into()
                 else {
                     return;
                 };
 
-                app.terminal.scroll((delta * 3.0) as isize);
+                let button = if state.is_pressed() {
+                    Some(button)
+                }
+                else {
+                    None
+                };
+                let sgr_mode =
+                    app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
+                let data = app
+                    .convert_mouse_event(button)
+                    .encode_mouse(&app.modifiers, sgr_mode);
+                if app.mouse_report_active() {
+                    app.terminal.write(&data);
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                use winit::event::MouseScrollDelta;
+                let MouseScrollDelta::LineDelta(_, delta) = delta
+                else {
+                    return;
+                };
+                let delta = delta as i32;
+
+                // アプリへ送信
+                if app.mouse_report_active() {
+                    let button = match delta {
+                        ..0 => MouseButton::ScrollDown,
+                        0 => return,
+                        1.. => MouseButton::ScrollUp,
+                    };
+                    let count = delta.unsigned_abs();
+
+                    let sgr_mode =
+                        app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
+                    for _ in 0..count {
+                        let data = app
+                            .convert_mouse_event(Some(button))
+                            .encode_mouse(&app.modifiers, sgr_mode);
+                        app.terminal.write(&data);
+                    }
+                }
+                // ターミナルへ送信
+                else {
+                    app.terminal.scroll((delta * 3) as isize);
+                }
+
                 app.window.request_redraw();
+            }
+            WindowEvent::Focused(focused) => {
+                if app.terminal.mode().contains(TerminalMode::FOCUS_REPORT) {
+                    let seq = if focused { "\x1b[I" } else { "\x1b[O" };
+                    app.terminal.write(seq.as_bytes());
+                }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state.is_pressed() {
