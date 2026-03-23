@@ -5,7 +5,7 @@
 
 struct GpuCell {
     glyph_index: u32,
-    _pad1: u32,
+    flags: u32,
     _pad2: u32,
     _pad3: u32,
     fg: vec4<f32>,
@@ -61,8 +61,8 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     var color = mix(cell.bg, cell.fg, alpha);
 
     let cursor_pos = grid_uniform.cursor_pos;
-    let cursor_style = grid_uniform.cursor_style;
     if all(cell_pos == cursor_pos) {
+        let cursor_style = grid_uniform.cursor_style;
         switch cursor_style {
             // 非表示
             case 0: {}
@@ -87,6 +87,30 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
                 color = vec4<f32>(1.0, 0.0, 1.0, 1.0);
             }
         }
+    } else {
+        let flags = cell.flags;
+        // 太字
+        if (flags & 0x0001) != 0 {}
+        // 減光
+        if (flags & 0x0002) != 0 {}
+        // 斜体
+        if (flags & 0x0004) != 0 {}
+        // 下線
+        if (flags & 0x0008) != 0 {
+            if u32(cell_size.y) - 2 <= local_pos.y {
+                color = cell.fg;
+            }
+        }
+        // 点滅 ( あまり使われない )
+        if (flags & 0x0010) != 0 {}
+        // 背景色の反転
+        if (flags & 0x0020) != 0 {
+            color = mix(cell.fg, cell.bg, alpha);
+        }
+        // 不可視
+        if (flags & 0x0040) != 0 {}
+        // 取り消し線
+        if (flags & 0x0080) != 0 {}
     }
     return color;
 }
