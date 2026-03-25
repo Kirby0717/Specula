@@ -99,13 +99,18 @@ impl GlyphAtlas {
         }
 
         // 改行
-        if Self::ATLAS_SIZE < self.cursor[0] + width {
+        if Self::ATLAS_SIZE < self.cursor[0] + width + Self::GLYPH_PADDING {
             self.cursor[0] = 0;
             self.cursor[1] += self.row_height + Self::GLYPH_PADDING;
             self.row_height = 0;
         }
 
         let [x, y] = self.cursor;
+        if Self::ATLAS_SIZE < x + width + Self::GLYPH_PADDING
+            || Self::ATLAS_SIZE < y + height + Self::GLYPH_PADDING
+        {
+            panic!("グリフアトラスが満杯です");
+        }
 
         // アトラスへ書き込み
         // TODO: 上書き時の前のデータの消去
