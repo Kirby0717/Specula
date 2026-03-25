@@ -1,5 +1,5 @@
-use super::atlas::{GlyphAtlas, GlyphIndex};
-use crate::core::{CellFlags, Terminal, TerminalMode};
+use super::atlas::{GlyphAtlas, GlyphInfo};
+use crate::core::{Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -66,12 +66,33 @@ impl GpuContext {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuCell {
-    glyph_index: u32,
-    flags: u32,
-    // vec4のアライメント用パディング
-    _pad: [u32; 2],
+    cell_pos: [u32; 2],
     fg: [f32; 4],
     bg: [f32; 4],
+    uv_rect: [f32; 4],
+    offset: [f32; 2],
+    size: [f32; 2],
+    flags: u32,
+    _padding1: u32,
+}
+impl GpuCell {
+    const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+        0 => Uint32x2,
+        1 => Float32x4,
+        2 => Float32x4,
+        3 => Float32x4,
+        4 => Float32x2,
+        5 => Float32x2,
+        6 => Uint32,
+    ];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
 }
 
 #[repr(C)]
@@ -80,16 +101,15 @@ pub struct GridUniform {
     cell_size: [f32; 2],
     grid_size: [u32; 2],
     atlas_size: [f32; 2],
-    slots_per_row: u32,
-    // vec2のアライメント用パディング
-    _padding1: u32,
     cursor_pos: [u32; 2],
     cursor_style: u32,
-    _padding2: u32,
+    _padding1: u32,
+    viewport_size: [f32; 2],
 }
 
 pub struct Renderer {
-    render_pipeline: wgpu::RenderPipeline,
+    cell_render_pipeline: wgpu::RenderPipeline,
+    glyph_render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     bind_group: wgpu::BindGroup,
     sampler: wgpu::Sampler,
@@ -108,18 +128,22 @@ impl Renderer {
 
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("./shader.wgsl"));
-        let sampler =
-            device.create_sampler(&wgpu::SamplerDescriptor::default());
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let cell_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CellBuffer"),
             size: (terminal.grid_rows()
                 * terminal.grid_cols()
                 * size_of::<GpuCell>()) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let [cell_width, cell_height] = atlas.cell_size();
         let uniform = GridUniform {
-            cell_size: [atlas.cell_width as f32, atlas.cell_height as f32],
+            cell_size: [cell_width as f32, cell_height as f32],
             grid_size: [
                 terminal.grid_cols() as u32,
                 terminal.grid_rows() as u32,
@@ -128,14 +152,16 @@ impl Renderer {
                 GlyphAtlas::ATLAS_SIZE as f32,
                 GlyphAtlas::ATLAS_SIZE as f32,
             ],
-            slots_per_row: atlas.slots_per_row,
-            _padding1: Default::default(),
             cursor_pos: {
                 let point = terminal.cursor().point;
                 [point.col as u32, point.row as u32]
             },
             cursor_style: terminal.cursor_style() as u32,
-            _padding2: Default::default(),
+            _padding1: Default::default(),
+            viewport_size: {
+                let window_size = gpu.size;
+                [window_size.width as f32, window_size.height as f32]
+            },
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -171,19 +197,7 @@ impl Renderer {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage {
-                                read_only: true,
-                            },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -199,7 +213,7 @@ impl Renderer {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&atlas.view),
+                    resource: wgpu::BindingResource::TextureView(atlas.view()),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -207,12 +221,6 @@ impl Renderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer(
-                        cell_buffer.as_entire_buffer_binding(),
-                    ),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
                     resource: wgpu::BindingResource::Buffer(
                         uniform_buffer.as_entire_buffer_binding(),
                     ),
@@ -226,20 +234,20 @@ impl Renderer {
                 bind_group_layouts: &[&bind_group_layout],
                 push_constant_ranges: &[],
             });
-        let render_pipeline = gpu.device.create_render_pipeline(
+        let cell_render_pipeline = gpu.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("RenderPipeline"),
+                label: Some("CellRenderPipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[],
+                    entry_point: Some("vs_cell"),
+                    buffers: &[GpuCell::desc()],
                     compilation_options:
                         wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: Some("fs_main"),
+                    entry_point: Some("fs_cell"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: gpu.surface_format,
                         blend: Some(wgpu::BlendState::REPLACE),
@@ -267,9 +275,51 @@ impl Renderer {
                 cache: None,
             },
         );
+        let glyph_render_pipeline = gpu.device.create_render_pipeline(
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("GlyphRenderPipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_glyph"),
+                    buffers: &[GpuCell::desc()],
+                    compilation_options:
+                        wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_glyph"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: gpu.surface_format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options:
+                        wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Front),
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+                cache: None,
+            },
+        );
 
         Self {
-            render_pipeline,
+            cell_render_pipeline,
+            glyph_render_pipeline,
             bind_group_layout,
             bind_group,
             sampler,
@@ -291,7 +341,7 @@ impl Renderer {
                 gpu.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("CellBuffer"),
                     size: need_buffer_size,
-                    usage: wgpu::BufferUsages::STORAGE
+                    usage: wgpu::BufferUsages::VERTEX
                         | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
@@ -303,7 +353,7 @@ impl Renderer {
                         wgpu::BindGroupEntry {
                             binding: 0,
                             resource: wgpu::BindingResource::TextureView(
-                                &atlas.view,
+                                atlas.view(),
                             ),
                         },
                         wgpu::BindGroupEntry {
@@ -315,12 +365,6 @@ impl Renderer {
                         wgpu::BindGroupEntry {
                             binding: 2,
                             resource: wgpu::BindingResource::Buffer(
-                                self.cell_buffer.as_entire_buffer_binding(),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: wgpu::BindingResource::Buffer(
                                 self.uniform_buffer.as_entire_buffer_binding(),
                             ),
                         },
@@ -329,6 +373,9 @@ impl Renderer {
         }
 
         self.uniform.grid_size = [cols as u32, rows as u32];
+        let window_size = gpu.size;
+        self.uniform.viewport_size =
+            [window_size.width as f32, window_size.height as f32];
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
@@ -368,7 +415,7 @@ impl Renderer {
                     view: &texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::RED),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -381,69 +428,51 @@ impl Renderer {
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
         let grid = terminal.active_grid();
-        for y in 0..grid.grid_rows() {
+        let rows = grid.grid_rows();
+        let cols = grid.grid_cols();
+        for y in 0..rows {
             let row = grid.viewport_row(y);
-            let mut wide_right = None;
-            for x in 0..grid.grid_cols() {
-                // 範囲内
-                if x < row.len() {
-                    let cell = &row[x];
+            for x in 0..cols {
+                if let Some(cell) = row.get(x) {
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
                     let flags = cell.flags.bits() as u32;
-
-                    // ワイドの右側
-                    if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
-                        && let Some(index) = wide_right
-                    {
-                        cell_buffer.push(GpuCell {
-                            glyph_index: index,
-                            flags,
-                            _pad: Default::default(),
-                            fg,
-                            bg,
-                        });
-                        continue;
-                    }
-                    wide_right = None;
-
-                    let glyph_index = atlas.get_or_insert(
-                        gpu,
-                        cell.c,
-                        cell.flags.contains(CellFlags::WIDE_CHAR),
-                    );
-                    let index = match glyph_index {
-                        GlyphIndex::Wide(l, r) => {
-                            wide_right = Some(r);
-                            l
-                        }
-                        GlyphIndex::Narrow(i) => i,
-                    };
+                    let GlyphInfo {
+                        uv_rect,
+                        offset,
+                        size,
+                    } = atlas.get_or_insert(gpu, cell.c);
                     cell_buffer.push(GpuCell {
-                        glyph_index: index,
-                        flags,
-                        _pad: Default::default(),
+                        cell_pos: [x as u32, y as u32],
                         fg,
                         bg,
+                        uv_rect,
+                        offset,
+                        size,
+                        flags,
+                        _padding1: Default::default(),
                     });
                 }
-                // 範囲外
                 else {
+                    log::info!("empty");
                     let cell = crate::core::Cell::default();
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
                     let flags = cell.flags.bits() as u32;
-                    let GlyphIndex::Narrow(glyph_index) =
-                        atlas.get_or_insert(gpu, ' ', false)
-                    else {
-                        unreachable!()
-                    };
+                    let GlyphInfo {
+                        uv_rect,
+                        offset,
+                        size,
+                    } = atlas.get_or_insert(gpu, ' ');
                     cell_buffer.push(GpuCell {
-                        glyph_index,
-                        flags,
-                        _pad: Default::default(),
+                        cell_pos: [x as u32, y as u32],
                         fg,
                         bg,
+                        uv_rect,
+                        offset,
+                        size,
+                        flags,
+                        _padding1: Default::default(),
                     });
                 }
             }
@@ -454,7 +483,7 @@ impl Renderer {
             bytemuck::cast_slice(&cell_buffer),
         );
 
-        // カーソルの更新
+        // Uniformの更新
         let point = terminal.cursor().point;
         self.uniform.cursor_pos = [
             point.col as u32,
@@ -477,9 +506,13 @@ impl Renderer {
         );
 
         // グリッドの描画
-        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_pipeline(&self.cell_render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
-        render_pass.draw(0..6, 0..1);
+        render_pass.set_vertex_buffer(0, self.cell_buffer.slice(..));
+        render_pass.draw(0..6, 0..cell_buffer.len() as u32);
+        // 文字の描画
+        render_pass.set_pipeline(&self.glyph_render_pipeline);
+        render_pass.draw(0..6, 0..cell_buffer.len() as u32);
 
         drop(render_pass);
 

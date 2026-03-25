@@ -1,143 +1,207 @@
 @group(0) @binding(0) var atlas: texture_2d<f32>;
 @group(0) @binding(1) var s: sampler;
-@group(0) @binding(2) var<storage, read> cells: array<GpuCell>;
-@group(0) @binding(3) var<uniform> grid_uniform: GridUniform;
+@group(0) @binding(2) var<uniform> grid: GridUniform;
 
 struct GpuCell {
-    glyph_index: u32,
-    flags: u32,
-    _pad2: u32,
-    _pad3: u32,
-    fg: vec4<f32>,
-    bg: vec4<f32>,
+    @location(0) cell_pos: vec2<u32>,
+    @location(1) fg: vec4<f32>,
+    @location(2) bg: vec4<f32>,
+    @location(3) uv_rect: vec4<f32>,
+    @location(4) offset: vec2<f32>,
+    @location(5) size: vec2<f32>,
+    @location(6) flags: u32,
 }
 struct GridUniform {
     cell_size: vec2<f32>,
     grid_size: vec2<u32>,
     atlas_size: vec2<f32>,
-    slots_per_row: u32,
-    _pad1: u32,
     cursor_pos: vec2<u32>,
     cursor_style: u32,
     _pad2: u32,
+    viewport_size: vec2<f32>,
 }
 
+// カーソルや装飾などは前景と背景の色を切り替える
+// 複数重なっている時元に戻ることで反転の中の下線が見えるようになる
+
+// 背景
 @vertex
-fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-    let pos = array<vec2<f32>, 6>(
-        vec2(-1.0,  1.0),
-        vec2( 1.0,  1.0),
-        vec2(-1.0, -1.0),
-        vec2( 1.0,  1.0),
-        vec2( 1.0, -1.0),
-        vec2(-1.0, -1.0),
-    );
-    return vec4<f32>(pos[i], 0.0, 1.0);
-}
+fn vs_cell(@builtin(vertex_index) i: u32, cell: GpuCell) -> CellOut {
+    let rect = array<vec2<u32>, 6>(
+        vec2(0, 0),
+        vec2(1, 0),
+        vec2(0, 1),
+        vec2(1, 0),
+        vec2(1, 1),
+        vec2(0, 1),
+    )[i];
 
+    let cell_pos = cell.cell_pos;
+    let pixel_pos = vec2<f32>(rect + cell_pos) * grid.cell_size;
+    let ndc = pixel_pos / grid.viewport_size * 2.0 - 1.0;
+    let pos = vec4(ndc.x, -ndc.y, 0.0, 1.0);
+
+    var fg = cell.fg;
+    var bg = cell.bg;
+    let flags = cell.flags;
+
+    return CellOut(
+        pos,
+        cell_pos,
+        fg,
+        bg,
+        flags
+    );
+}
+struct CellOut {
+    @builtin(position)              pos: vec4<f32>,
+    @location(0)                    cell_pos: vec2<u32>,
+    @location(1)                    fg: vec4<f32>,
+    @location(2)                    bg: vec4<f32>,
+    @location(3) @interpolate(flat) flags: u32,
+}
 @fragment
-fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-    let cell_size = grid_uniform.cell_size;
-    let grid_size = grid_uniform.grid_size;
+fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
+    let flags = cell.flags;
+    var fg = cell.fg;
+    var bg = cell.bg;
 
-    let cell_pos = vec2<u32>(pos.xy / cell_size);
-    if any(grid_size <= cell_pos) {
-        return vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    // 背景色の反転
+    if (flags & 0x0020) != 0 {
+        let tem = fg;
+        fg = bg;
+        bg = tem;
+    }
+    // 下線
+    if (flags & 0x0008) != 0 {
+        let local_pos = cell.pos.xy % grid.cell_size;
+        if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
+            let tem = fg;
+            fg = bg;
+            bg = tem;
+        }
+    }
+    // 取り消し線
+    if (flags & 0x0080) != 0 {
+        let local_pos = cell.pos.xy % grid.cell_size;
+        let center = grid.cell_size.y / 2.0;
+        if center - 1.5 < local_pos.y && local_pos.y < center + 1.5 {
+            let tem = fg;
+            fg = bg;
+            bg = tem;
+        }
     }
 
-    let slots_per_row = grid_uniform.slots_per_row;
-    let atlas_size = grid_uniform.atlas_size;
-
-    let index = cell_pos.y * grid_size.x + cell_pos.x;
-    let cell = cells[index];
-    let slot_pos = vec2<u32>(
-        cell.glyph_index % slots_per_row,
-        cell.glyph_index / slots_per_row,
-    );
-    let local_pos = vec2<u32>(pos.xy) % vec2<u32>(cell_size);
-
-    let uv = vec2<f32>(slot_pos * vec2<u32>(cell_size) + local_pos) / atlas_size;
-    let alpha = textureSample(atlas, s, uv).r;
-    var color = mix(cell.bg, cell.fg, alpha);
-
-    let cursor_pos = grid_uniform.cursor_pos;
-    if all(cell_pos == cursor_pos) {
-        let cursor_style = grid_uniform.cursor_style;
-        switch cursor_style {
-            // 非表示
-            case 0: {}
-            // ブロック
-            case 1: {
-                color = mix(cell.fg, cell.bg, alpha);
-            }
-            // 下線
-            case 2: {
-                if u32(cell_size.y) - 2 <= local_pos.y {
-                    color = cell.fg;
-                }
-            }
-            // 縦線
-            case 3: {
-                if local_pos.x < 2 {
-                    color = cell.fg;
-                }
-            }
-            // ブロック点滅
-            case 4: {
-                color = mix(cell.fg, cell.bg, alpha);
-            }
-            // 下線点滅
-            case 5: {
-                if u32(cell_size.y) - 2 <= local_pos.y {
-                    color = cell.fg;
-                }
-            }
-            // 縦線点滅
-            case 6: {
-                if local_pos.x < 2 {
-                    color = cell.fg;
-                }
-            }
-            // 不正なカーソルは紫
-            default: {
-                color = vec4<f32>(1.0, 0.0, 1.0, 1.0);
-            }
-        }
-    } else {
-        let flags = cell.flags;
-        // 太字
-        if (flags & 0x0001) != 0 {}
-        // 減光
-        if (flags & 0x0002) != 0 {}
-        // 斜体
-        if (flags & 0x0004) != 0 {
-            let skew = 0.2;
-            var local_pos = local_pos;
-            local_pos.x     -= u32(skew * (cell_size.y - f32(local_pos.y)));
-            let uv = vec2<f32>(slot_pos * vec2<u32>(cell_size) + local_pos) / atlas_size;
-            let alpha = textureSample(atlas, s, uv).r;
-            color = mix(cell.bg, cell.fg, alpha);
-        }
-        // 下線
-        if (flags & 0x0008) != 0 {
-            if u32(cell_size.y) - 2 <= local_pos.y {
-                color = cell.fg;
-            }
-        }
-        // 点滅 ( あまり使われない )
-        if (flags & 0x0010) != 0 {}
-        // 背景色の反転
-        if (flags & 0x0020) != 0 {
-            color = mix(cell.fg, cell.bg, alpha);
-        }
-        // 不可視
-        if (flags & 0x0040) != 0 {}
-        // 取り消し線
-        if (flags & 0x0080) != 0 {}
+    // カーソル
+    let local_pos = cell.pos.xy % grid.cell_size;
+    if all(cell.cell_pos == grid.cursor_pos) {
+        apply_cursor(&fg, &bg, local_pos);
     }
-    return color;
+
+    return bg;
 }
 
-fn mix(bg: vec4<f32>, fg: vec4<f32>, alpha: f32) -> vec4<f32> {
-    return bg * (1.0 - alpha) + fg * alpha;
+// 文字
+@vertex
+fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
+    let rect = array<vec2<f32>, 6>(
+        vec2(0, 0),
+        vec2(1, 0),
+        vec2(0, 1),
+        vec2(1, 0),
+        vec2(1, 1),
+        vec2(0, 1),
+    )[i];
+
+    let glyph_size = cell.size;
+    var glyph_pos = rect * vec2<f32>(glyph_size);
+
+    let flags = cell.flags;
+    // 斜体
+    if (flags & 0x0004) != 0 {
+        if rect.y < 0.5 {
+            let skew = 0.2;
+            glyph_pos.x += skew * grid.cell_size.y;
+        }
+    }
+
+    let origin = vec2<f32>(cell.cell_pos) * grid.cell_size + cell.offset;
+    let pixel_pos = origin + glyph_pos;
+    let ndc = pixel_pos / grid.viewport_size * 2.0 - 1.0;
+    let pos = vec4(ndc.x, -ndc.y, 0.0, 1.0);
+
+    let uv = mix(cell.uv_rect.xy, cell.uv_rect.zw, rect);
+    var fg = cell.fg;
+    var bg = cell.bg;
+
+    return GlyphOut(pos, uv, fg, bg, flags, glyph_pos);
+}
+struct GlyphOut {
+    @builtin(position)              pos: vec4<f32>,
+    @location(0)                    uv: vec2<f32>,
+    @location(1)                    fg: vec4<f32>,
+    @location(2)                    bg: vec4<f32>,
+    @location(3) @interpolate(flat) flags: u32,
+    @location(4)                    glyph_pos: vec2<f32>,
+}
+@fragment
+fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
+    let flags = glyph.flags;
+    var fg = glyph.fg;
+    var bg = glyph.bg;
+
+    // 背景色の反転
+    if (flags & 0x0020) != 0 {
+        let tem = fg;
+        fg = bg;
+        bg = tem;
+    }
+    // 不可視
+    if (flags & 0x0040) != 0 {
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    }
+
+    // カーソル
+    let local_pos = glyph.pos.xy % grid.cell_size;
+    let cell_pos = vec2<u32>(glyph.pos.xy / grid.cell_size);
+    if all(cell_pos == grid.cursor_pos) {
+        apply_cursor(&fg, &bg, local_pos);
+    }
+
+    // 斜体
+    if (flags & 0x0004) != 0 {
+        let alpha = textureSample(atlas, s, glyph.uv).r;
+        return vec4<f32>(fg.rgb, alpha);
+    } else {
+        let texel = vec2<i32>(glyph.uv * grid.atlas_size);
+        let alpha = textureLoad(atlas, texel, 0).r;
+        return vec4<f32>(fg.rgb, alpha);
+    }
+}
+
+fn apply_cursor(fg: ptr<function, vec4<f32>>, bg: ptr<function, vec4<f32>>, local_pos: vec2<f32>) {
+    let cursor_style = grid.cursor_style;
+    switch cursor_style {
+        case 0: {}
+        case 1, 4: {
+            let tmp = *fg;
+            *fg = *bg;
+            *bg = tmp;
+        }
+        case 2, 5: {
+            if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
+                let tmp = *fg;
+                *fg = *bg;
+                *bg = tmp;
+            }
+        }
+        case 3, 6: {
+            if local_pos.x < 1.5 {
+                let tmp = *fg;
+                *fg = *bg;
+                *bg = tmp;
+            }
+        }
+        default: {}
+    }
 }

@@ -206,12 +206,19 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             23 => {
                 template.flags.remove(CellFlags::ITALIC);
             }
-            // アンダーライン
+            // 下線
             4 => {
                 template.flags.insert(CellFlags::UNDERLINE);
             }
             24 => {
                 template.flags.remove(CellFlags::UNDERLINE);
+            }
+            // 点滅
+            5 | 6 => {
+                template.flags.insert(CellFlags::BLINK);
+            }
+            25 => {
+                template.flags.remove(CellFlags::BLINK);
             }
             // 反転
             7 => {
@@ -219,6 +226,20 @@ fn handle_sgr(template: &mut Cell, params: &vte::Params) {
             }
             27 => {
                 template.flags.remove(CellFlags::INVERSE);
+            }
+            // 不可視
+            8 => {
+                template.flags.insert(CellFlags::HIDDEN);
+            }
+            28 => {
+                template.flags.remove(CellFlags::HIDDEN);
+            }
+            // 取り消し線
+            9 => {
+                template.flags.insert(CellFlags::STRIKEOUT);
+            }
+            29 => {
+                template.flags.remove(CellFlags::STRIKEOUT);
             }
             // 前景色
             30..=37 => {
