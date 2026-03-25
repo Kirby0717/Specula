@@ -149,10 +149,13 @@ impl App {
         gpu.configure_surface();
 
         let atlas = GlyphAtlas::new(&gpu, 24.0);
+        let cell_size = atlas.cell_size();
+        let cell_width = cell_size[0];
+        let cell_height = cell_size[1];
 
         let window_size = window.inner_size();
-        let rows = window_size.height / atlas.cell_height;
-        let cols = window_size.width / atlas.cell_width;
+        let rows = window_size.height / cell_height;
+        let cols = window_size.width / cell_width;
         let notify_proxy = proxy.clone();
         let notify = Box::new(move || {
             notify_proxy.send_event(TermEvent::PtyOutput).ok();
@@ -190,8 +193,9 @@ impl App {
         self.gpu.size = new_size;
         self.gpu.configure_surface();
 
-        let rows = (new_size.height / self.atlas.cell_height) as usize;
-        let cols = (new_size.width / self.atlas.cell_width) as usize;
+        let [cell_width, cell_height] = self.atlas.cell_size();
+        let rows = (new_size.height / cell_height) as usize;
+        let cols = (new_size.width / cell_width) as usize;
 
         self.terminal.resize(rows, cols);
         self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
@@ -238,8 +242,9 @@ impl App {
         )
     }
     fn pixel_to_cell(&self, x: f64, y: f64) -> Point {
-        let row = (y / self.atlas.cell_height as f64) as usize;
-        let col = (x / self.atlas.cell_width as f64) as usize;
+        let [cell_width, cell_height] = self.atlas.cell_size();
+        let row = (y / cell_height as f64) as usize;
+        let col = (x / cell_width as f64) as usize;
         let col = col.min(self.terminal.grid_cols() - 1);
         let row = row.min(self.terminal.grid_rows() - 1);
         Point { row, col }
