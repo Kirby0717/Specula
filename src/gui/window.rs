@@ -27,12 +27,7 @@ enum MouseButton {
 }
 impl MouseButton {
     fn is_pressed(self) -> bool {
-        if MouseButton::None == self {
-            false
-        }
-        else {
-            true
-        }
+        MouseButton::None != self
     }
 }
 impl TryFrom<winit::event::MouseButton> for MouseButton {

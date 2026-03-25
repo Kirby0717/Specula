@@ -1,5 +1,5 @@
 use super::atlas::{GlyphAtlas, GlyphInfo};
-use crate::core::{CellFlags, Terminal, TerminalMode};
+use crate::core::{Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -73,6 +73,7 @@ pub struct GpuCell {
     offset: [f32; 2],
     size: [f32; 2],
     flags: u32,
+    _padding1: u32,
 }
 impl GpuCell {
     const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
@@ -449,9 +450,11 @@ impl Renderer {
                         offset,
                         size,
                         flags,
+                        _padding1: Default::default(),
                     });
                 }
                 else {
+                    log::info!("empty");
                     let cell = crate::core::Cell::default();
                     let fg = cell.fg.color_to_rgba();
                     let bg = cell.bg.color_to_rgba();
@@ -469,109 +472,11 @@ impl Renderer {
                         offset,
                         size,
                         flags,
-                    });
-                }
-                // 範囲内
-                /*if x < row.len() {
-                    let cell = &row[x];
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-                    cell_buffer.push(GpuCell {
-                        cell_pos: [x as u32, y as u32],
-                        glyph_index: 0,
-                        glyph_wide: atlas.cell_width,
-                        fg,
-                        bg,
-                        flags,
-                    });
-                }
-                else {
-                    let cell = crate::core::Cell::default();
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-                    let info = atlas.get_or_insert(gpu, ' ');
-                    cell_buffer.push(GpuCell {
-                        cell_pos: [x as u32, y as u32],
-                        glyph_index,
-                        glyph_wide: atlas.cell_width,
-                        flags,
-                        fg,
-                        bg,
-                    });
-                }*/
-            }
-        }
-        /*
-        for y in 0..grid.grid_rows() {
-            let row = grid.viewport_row(y);
-            let mut wide_right = None;
-            for x in 0..grid.grid_cols() {
-                // 範囲内
-                if x < row.len() {
-                    let cell = &row[x];
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-
-                    // ワイドの右側
-                    if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
-                        && let Some(index) = wide_right
-                    {
-                        cell_buffer.push(GpuCell {
-                            glyph_index: index,
-                            flags,
-                            _pad: Default::default(),
-                            fg,
-                            bg,
-                        });
-                        continue;
-                    }
-                    wide_right = None;
-
-                    let glyph_index = atlas.get_or_insert(
-                        gpu,
-                        cell.c,
-                        cell.flags.contains(CellFlags::WIDE_CHAR),
-                    );
-                    let index = match glyph_index {
-                        GlyphIndex::Wide(l, r) => {
-                            wide_right = Some(r);
-                            l
-                        }
-                        GlyphIndex::Narrow(i) => i,
-                    };
-                    cell_buffer.push(GpuCell {
-                        glyph_index: index,
-                        flags,
-                        _pad: Default::default(),
-                        fg,
-                        bg,
-                    });
-                }
-                // 範囲外
-                else {
-                    let cell = crate::core::Cell::default();
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-                    let GlyphIndex::Narrow(glyph_index) =
-                        atlas.get_or_insert(gpu, ' ', false)
-                    else {
-                        unreachable!()
-                    };
-                    cell_buffer.push(GpuCell {
-                        glyph_index,
-                        flags,
-                        _pad: Default::default(),
-                        fg,
-                        bg,
+                        _padding1: Default::default(),
                     });
                 }
             }
         }
-        */
         gpu.queue.write_buffer(
             &self.cell_buffer,
             0,

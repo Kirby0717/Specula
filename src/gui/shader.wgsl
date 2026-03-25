@@ -21,6 +21,9 @@ struct GridUniform {
     viewport_size: vec2<f32>,
 }
 
+// カーソルや装飾などは前景と背景の色を切り替える
+// 複数重なっている時元に戻ることで反転の中の下線が見えるようになる
+
 // 背景
 @vertex
 fn vs_cell(@builtin(vertex_index) i: u32, cell: GpuCell) -> CellOut {
@@ -92,60 +95,7 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     // カーソル
     let local_pos = cell.pos.xy % grid.cell_size;
     if all(cell.cell_pos == grid.cursor_pos) {
-        let cursor_style = grid.cursor_style;
-        switch cursor_style {
-            // 非表示
-            case 0: {}
-            // ブロック
-            case 1: {
-                let tem = fg;
-                fg = bg;
-                bg = tem;
-            }
-            // 下線
-            case 2: {
-                if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 縦線
-            case 3: {
-                if local_pos.x < 1.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // ブロック点滅
-            case 4: {
-                let tem = fg;
-                fg = bg;
-                bg = tem;
-            }
-            // 下線点滅
-            case 5: {
-                if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 縦線点滅
-            case 6: {
-                if local_pos.x < 1.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 不正なカーソルは紫
-            default: {
-                let purple = vec4<f32>(1.0, 0.0, 1.0, 1.0);
-                return purple;
-            }
-        }
+        apply_cursor(&fg, &bg, local_pos);
     }
 
     return bg;
@@ -171,7 +121,7 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     if (flags & 0x0004) != 0 {
         if rect.y < 0.5 {
             let skew = 0.2;
-            glyph_pos.x   += skew * grid.cell_size.y;
+            glyph_pos.x += skew * grid.cell_size.y;
         }
     }
 
@@ -184,16 +134,15 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     var fg = cell.fg;
     var bg = cell.bg;
 
-    return GlyphOut(pos, cell.cell_pos, uv, fg, bg, flags, glyph_pos);
+    return GlyphOut(pos, uv, fg, bg, flags, glyph_pos);
 }
 struct GlyphOut {
     @builtin(position)              pos: vec4<f32>,
-    @location(0)                    cell_pos: vec2<u32>,
-    @location(1)                    uv: vec2<f32>,
-    @location(2)                    fg: vec4<f32>,
-    @location(3)                    bg: vec4<f32>,
-    @location(4) @interpolate(flat) flags: u32,
-    @location(5)                    glyph_pos: vec2<f32>,
+    @location(0)                    uv: vec2<f32>,
+    @location(1)                    fg: vec4<f32>,
+    @location(2)                    bg: vec4<f32>,
+    @location(3) @interpolate(flat) flags: u32,
+    @location(4)                    glyph_pos: vec2<f32>,
 }
 @fragment
 fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
@@ -214,63 +163,45 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
 
     // カーソル
     let local_pos = glyph.pos.xy % grid.cell_size;
-    if all(glyph.cell_pos == grid.cursor_pos) {
-        let cursor_style = grid.cursor_style;
-        switch cursor_style {
-            // 非表示
-            case 0: {}
-            // ブロック
-            case 1: {
-                let tem = fg;
-                fg = bg;
-                bg = tem;
-            }
-            // 下線
-            case 2: {
-                if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 縦線
-            case 3: {
-                if local_pos.x < 1.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // ブロック点滅
-            case 4: {
-                let tem = fg;
-                fg = bg;
-                bg = tem;
-            }
-            // 下線点滅
-            case 5: {
-                if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 縦線点滅
-            case 6: {
-                if local_pos.x < 1.5 {
-                    let tem = fg;
-                    fg = bg;
-                    bg = tem;
-                }
-            }
-            // 不正なカーソルは紫
-            default: {
-                let purple = vec4<f32>(1.0, 0.0, 1.0, 1.0);
-                return purple;
-            }
-        }
+    let cell_pos = vec2<u32>(glyph.pos.xy / grid.cell_size);
+    if all(cell_pos == grid.cursor_pos) {
+        apply_cursor(&fg, &bg, local_pos);
     }
 
-    let alpha = textureSample(atlas, s, glyph.uv).r;
-    return vec4<f32>(fg.rgb, alpha);
+    // 斜体
+    if (flags & 0x0004) != 0 {
+        let alpha = textureSample(atlas, s, glyph.uv).r;
+        return vec4<f32>(fg.rgb, alpha);
+    } else {
+        let texel = vec2<i32>(glyph.uv * grid.atlas_size);
+        let alpha = textureLoad(atlas, texel, 0).r;
+        return vec4<f32>(fg.rgb, alpha);
+    }
+}
+
+fn apply_cursor(fg: ptr<function, vec4<f32>>, bg: ptr<function, vec4<f32>>, local_pos: vec2<f32>) {
+    let cursor_style = grid.cursor_style;
+    switch cursor_style {
+        case 0: {}
+        case 1, 4: {
+            let tmp = *fg;
+            *fg = *bg;
+            *bg = tmp;
+        }
+        case 2, 5: {
+            if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
+                let tmp = *fg;
+                *fg = *bg;
+                *bg = tmp;
+            }
+        }
+        case 3, 6: {
+            if local_pos.x < 1.5 {
+                let tmp = *fg;
+                *fg = *bg;
+                *bg = tmp;
+            }
+        }
+        default: {}
+    }
 }

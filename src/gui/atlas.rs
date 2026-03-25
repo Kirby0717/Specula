@@ -64,7 +64,7 @@ impl GlyphAtlas {
             cache: HashMap::default(),
             texture,
             view,
-            cursor: [0, 0],
+            cursor: [Self::GLYPH_PADDING, Self::GLYPH_PADDING],
             row_height: 0,
         }
     }
