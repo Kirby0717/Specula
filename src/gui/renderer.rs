@@ -1,5 +1,5 @@
 use super::atlas::{GlyphAtlas, GlyphInfo};
-use crate::core::{Terminal, TerminalMode};
+use crate::core::{CellFlags, Terminal, TerminalMode};
 
 use std::sync::Arc;
 
@@ -427,22 +427,26 @@ impl Renderer {
 
         // グリッドからGpuCellへの変換
         let mut cell_buffer = vec![];
+        let mut empty_cell_buffer = vec![];
         let grid = terminal.active_grid();
         let rows = grid.grid_rows();
         let cols = grid.grid_cols();
         for y in 0..rows {
             let row = grid.viewport_row(y);
-            for x in 0..cols {
-                if let Some(cell) = row.get(x) {
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-                    let GlyphInfo {
-                        uv_rect,
-                        offset,
-                        size,
-                    } = atlas.get_or_insert(gpu, cell.c);
-                    cell_buffer.push(GpuCell {
+            for (x, cell) in row.iter().take(cols).enumerate() {
+                let GlyphInfo {
+                    uv_rect,
+                    offset,
+                    size,
+                } = atlas.get_or_insert(gpu, cell.c);
+                let fg = cell.fg.color_to_rgba();
+                let bg = cell.bg.color_to_rgba();
+                let flags = cell.flags.bits() as u32;
+                if size[0] <= 0.0
+                    || size[1] <= 0.0
+                    || cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+                {
+                    empty_cell_buffer.push(GpuCell {
                         cell_pos: [x as u32, y as u32],
                         fg,
                         bg,
@@ -452,35 +456,29 @@ impl Renderer {
                         flags,
                         _padding1: Default::default(),
                     });
+                    continue;
                 }
-                else {
-                    log::info!("empty");
-                    let cell = crate::core::Cell::default();
-                    let fg = cell.fg.color_to_rgba();
-                    let bg = cell.bg.color_to_rgba();
-                    let flags = cell.flags.bits() as u32;
-                    let GlyphInfo {
-                        uv_rect,
-                        offset,
-                        size,
-                    } = atlas.get_or_insert(gpu, ' ');
-                    cell_buffer.push(GpuCell {
-                        cell_pos: [x as u32, y as u32],
-                        fg,
-                        bg,
-                        uv_rect,
-                        offset,
-                        size,
-                        flags,
-                        _padding1: Default::default(),
-                    });
-                }
+                cell_buffer.push(GpuCell {
+                    cell_pos: [x as u32, y as u32],
+                    fg,
+                    bg,
+                    uv_rect,
+                    offset,
+                    size,
+                    flags,
+                    _padding1: Default::default(),
+                });
             }
         }
         gpu.queue.write_buffer(
             &self.cell_buffer,
             0,
             bytemuck::cast_slice(&cell_buffer),
+        );
+        gpu.queue.write_buffer(
+            &self.cell_buffer,
+            (size_of::<GpuCell>() * cell_buffer.len()) as u64,
+            bytemuck::cast_slice(&empty_cell_buffer),
         );
 
         // Uniformの更新
@@ -509,7 +507,10 @@ impl Renderer {
         render_pass.set_pipeline(&self.cell_render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.cell_buffer.slice(..));
-        render_pass.draw(0..6, 0..cell_buffer.len() as u32);
+        render_pass.draw(
+            0..6,
+            0..(cell_buffer.len() + empty_cell_buffer.len()) as u32,
+        );
         // 文字の描画
         render_pass.set_pipeline(&self.glyph_render_pipeline);
         render_pass.draw(0..6, 0..cell_buffer.len() as u32);
