@@ -28,7 +28,27 @@ impl GlyphAtlas {
     const GLYPH_PADDING: u32 = 1;
     pub fn new(gpu: &GpuContext, px: f32) -> Self {
         // フォントの読み込み
-        let font_data = std::fs::read("./BizinGothicCCNerdFont-Regular.ttf")
+        let font_dir = if cfg!(debug_assertions) {
+            std::env::current_dir()
+                .expect("作業ディレクトリの取得に失敗しました")
+        }
+        else {
+            std::env::current_exe()
+                .expect("実行ファイルのパスを取得できません")
+                .parent()
+                .expect("実行ファイルのディレクトリを取得できません")
+                .to_path_buf()
+        };
+        let font_path = std::fs::read_dir(&font_dir)
+            .expect("ディレクトリの読み取りに失敗しました")
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .find(|p| p.extension().is_some_and(|ext| ext == "ttf"))
+            .unwrap_or_else(|| {
+                panic!("{} に.ttfファイルが見つかりません", font_dir.display())
+            });
+        log::info!("フォント: {}", font_path.display());
+        let font_data = std::fs::read(&font_path)
             .expect("フォントの読み込みに失敗しました");
         let font = fontdue::Font::from_bytes(
             font_data,

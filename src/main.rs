@@ -1,8 +1,11 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod core;
 mod gui;
 
 fn main() -> anyhow::Result<()> {
     log_init();
+    setup_panic_hook();
 
     gui::run_app()?;
 
@@ -11,16 +14,23 @@ fn main() -> anyhow::Result<()> {
 
 fn log_init() {
     use simplelog::{
-        CombinedLogger, Config, LevelFilter, SimpleLogger, WriteLogger,
+        CombinedLogger, Config, LevelFilter, SharedLogger, SimpleLogger,
+        WriteLogger,
     };
 
-    CombinedLogger::init(vec![
-        SimpleLogger::new(LevelFilter::Info, Config::default()),
-        WriteLogger::new(
-            LevelFilter::Info,
-            Config::default(),
-            std::fs::File::create("specula.log").unwrap(),
-        ),
-    ])
-    .unwrap();
+    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![];
+    loggers.push(WriteLogger::new(
+        LevelFilter::Info,
+        Config::default(),
+        std::fs::File::create("specula.log").unwrap(),
+    ));
+    if cfg!(debug_assertions) {
+        loggers.push(SimpleLogger::new(LevelFilter::Info, Config::default()));
+    }
+    CombinedLogger::init(loggers).unwrap();
+}
+fn setup_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        log::error!("パニック: {info}");
+    }));
 }
