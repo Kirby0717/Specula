@@ -613,21 +613,20 @@ impl Terminal {
             self.pty.writer.write_all(text.as_bytes()).ok();
         }
     }
-    pub fn write_arrow(&mut self, arrow: winit::keyboard::NamedKey) {
-        use winit::keyboard::NamedKey;
-        let letter = match arrow {
-            NamedKey::ArrowUp => b'A',
-            NamedKey::ArrowDown => b'B',
-            NamedKey::ArrowRight => b'C',
-            NamedKey::ArrowLeft => b'D',
-            _ => return,
-        };
-        if self.core.mode.contains(TerminalMode::DECCKM) {
-            self.write(&[0x1b, b'O', letter]);
+    pub fn write_key(
+        &mut self,
+        modifiers: winit::event::Modifiers,
+        key: winit::keyboard::NamedKey,
+    ) -> bool {
+        if let Some(buf) = super::input::build(
+            modifiers,
+            key,
+            self.core.mode.contains(TerminalMode::DECCKM),
+        ) {
+            self.write(&buf);
+            return true;
         }
-        else {
-            self.write(&[0x1b, b'[', letter]);
-        }
+        false
     }
     pub fn cursor(&self) -> &CursorState {
         self.active_grid().cursor()

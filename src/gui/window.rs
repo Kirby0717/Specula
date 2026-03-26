@@ -407,6 +407,12 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                         return;
                     }
 
+                    // 特殊キー
+                    if let Key::Named(key) = event.logical_key
+                        && app.terminal.write_key(app.modifiers, key)
+                    {
+                        return;
+                    }
                     // Ctrl
                     if app.modifiers.state().control_key()
                         && let Key::Character(c) = &event.logical_key
@@ -423,32 +429,16 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                             ']' | '}' => 0x1d,
                             _ => return,
                         };
-                        app.terminal.write(&[byte]);
-                        return;
-                    }
-                    // 特殊キー
-                    'a: {
-                        if let Key::Named(named_key) = &event.logical_key {
-                            let data = match named_key {
-                                NamedKey::Enter => "\r",
-                                NamedKey::Backspace => "\x7f",
-                                NamedKey::Escape => "\x1b",
-                                NamedKey::Tab => "\t",
-                                NamedKey::ArrowUp
-                                | NamedKey::ArrowDown
-                                | NamedKey::ArrowRight
-                                | NamedKey::ArrowLeft => {
-                                    app.terminal.write_arrow(*named_key);
-                                    return;
-                                }
-                                _ => break 'a,
-                            };
-                            app.terminal.write(data.as_bytes());
-                            return;
+                        if app.modifiers.state().alt_key() {
+                            app.terminal.write(b"\x1b");
                         }
+                        app.terminal.write(&[byte]);
                     }
                     // 通常キー
-                    if let Some(text) = &event.text {
+                    else if let Some(text) = &event.text {
+                        if app.modifiers.state().alt_key() {
+                            app.terminal.write(b"\x1b");
+                        }
                         app.terminal.write(text.as_bytes());
                     }
                 }
