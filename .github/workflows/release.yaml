@@ -135,7 +135,7 @@ jobs:
       - name: バイナリのストリップ (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
-          strip target/${{ matrix.target }}/release/asari${{ matrix.ext }}
+          strip target/${{ matrix.target }}/release/specula${{ matrix.ext }}
 
       - name: 配布用ディレクトリの作成
         shell: bash
