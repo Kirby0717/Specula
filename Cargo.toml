@@ -1,7 +1,8 @@
 [package]
 name = "specula"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1"
@@ -12,7 +13,7 @@ bitflags = "2"
 portable-pty = "0.9"
 vte = "0.15"
 winit = "0.30"
-# 28.0.0はダメ
+# 28.0.0 29.0.0 はダメ
 wgpu = "27"
 pollster = "0.4.0"
 bytemuck = "1"
