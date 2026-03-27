@@ -1,5 +1,5 @@
 use super::{
-    cell::{Cell, Color},
+    cell::{Cell, Color, Point},
     grid::{CursorState, Grid},
 };
 
@@ -648,6 +648,15 @@ impl Terminal {
     }
     pub fn mode(&self) -> TerminalMode {
         self.core.mode
+    }
+    pub fn viewport_row_to_buffer_index(&self, row: usize) -> usize {
+        self.active_grid().viewport_row_to_buffer_index(row)
+    }
+    pub fn buffer_index_to_viewport_row(&self, index: usize) -> isize {
+        self.active_grid().buffer_index_to_viewport_row(index)
+    }
+    pub fn get_text(&self, begin: Point, end: Point) -> String {
+        self.active_grid().get_text(begin, end)
     }
 }
 impl std::fmt::Debug for Terminal {

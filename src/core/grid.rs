@@ -344,6 +344,33 @@ impl Grid {
             self.buffer.len() - self.rows - self.viewport_offset + row;
         &self.buffer[buffer_index].inner
     }
+    pub fn viewport_row_to_buffer_index(&self, row: usize) -> usize {
+        self.buffer.len() - self.rows - self.viewport_offset + row
+    }
+    pub fn buffer_index_to_viewport_row(&self, index: usize) -> isize {
+        (index + self.viewport_offset + self.rows) as isize
+            - self.buffer.len() as isize
+    }
+    pub fn get_text(&self, begin: Point, end: Point) -> String {
+        let mut text = String::new();
+        'a: for row in begin.row..=end.row {
+            if self.buffer.len() <= row {
+                break;
+            }
+            let line = &self.buffer[row].inner;
+            for (col, cell) in line.iter().enumerate() {
+                if row == begin.row && begin.col < col {
+                    continue;
+                }
+                if row == end.row && col < end.col {
+                    break 'a;
+                }
+                text.push(cell.c);
+            }
+            text.push('\n');
+        }
+        text
+    }
     pub fn viewport_offset(&self) -> usize {
         self.viewport_offset
     }

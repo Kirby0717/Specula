@@ -105,6 +105,7 @@ pub struct GridUniform {
     cursor_style: u32,
     _padding1: u32,
     viewport_size: [f32; 2],
+    selection_range: [u32; 2],
 }
 
 pub struct Renderer {
@@ -162,6 +163,7 @@ impl Renderer {
                 let window_size = gpu.size;
                 [window_size.width as f32, window_size.height as f32]
             },
+            selection_range: [0, 0],
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -388,6 +390,7 @@ impl Renderer {
         gpu: &GpuContext,
         atlas: &mut GlyphAtlas,
         terminal: &Terminal,
+        selection_range: [u32; 2],
     ) {
         // スワップチェーンのバックバッファの取得
         let surface_texture = gpu
@@ -487,6 +490,7 @@ impl Renderer {
             point.col as u32,
             (point.row + grid.viewport_offset()) as u32,
         ];
+        self.uniform.selection_range = selection_range;
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,

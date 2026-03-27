@@ -19,6 +19,7 @@ struct GridUniform {
     cursor_style: u32,
     _pad2: u32,
     viewport_size: vec2<f32>,
+    selection_range: vec2<u32>,
 }
 
 // カーソルや装飾などは前景と背景の色を切り替える
@@ -65,6 +66,15 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     let flags = cell.flags;
     var fg = cell.fg;
     var bg = cell.bg;
+
+    // 選択
+    let cell_index = cell.cell_pos.y * grid.grid_size.x + cell.cell_pos.x;
+    let selection_range = grid.selection_range;
+    if selection_range.x <= cell_index && cell_index < selection_range.y {
+        let tem = fg;
+        fg = bg;
+        bg = tem;
+    }
 
     // 背景色の反転
     if (flags & 0x0020) != 0 {
@@ -134,21 +144,31 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     var fg = cell.fg;
     var bg = cell.bg;
 
-    return GlyphOut(pos, uv, fg, bg, flags, glyph_pos);
+    return GlyphOut(pos, cell.cell_pos, uv, fg, bg, flags, glyph_pos);
 }
 struct GlyphOut {
     @builtin(position)              pos: vec4<f32>,
-    @location(0)                    uv: vec2<f32>,
-    @location(1)                    fg: vec4<f32>,
-    @location(2)                    bg: vec4<f32>,
-    @location(3) @interpolate(flat) flags: u32,
-    @location(4)                    glyph_pos: vec2<f32>,
+    @location(0)                    cell_pos: vec2<u32>,
+    @location(1)                    uv: vec2<f32>,
+    @location(2)                    fg: vec4<f32>,
+    @location(3)                    bg: vec4<f32>,
+    @location(4) @interpolate(flat) flags: u32,
+    @location(5)                    glyph_pos: vec2<f32>,
 }
 @fragment
 fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
     let flags = glyph.flags;
     var fg = glyph.fg;
     var bg = glyph.bg;
+
+    // 選択
+    let cell_index = glyph.cell_pos.y * grid.grid_size.x + glyph.cell_pos.x;
+    let selection_range = grid.selection_range;
+    if selection_range.x <= cell_index && cell_index < selection_range.y {
+        let tem = fg;
+        fg = bg;
+        bg = tem;
+    }
 
     // 背景色の反転
     if (flags & 0x0020) != 0 {
@@ -163,8 +183,7 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
 
     // カーソル
     let local_pos = glyph.pos.xy % grid.cell_size;
-    let cell_pos = vec2<u32>(glyph.pos.xy / grid.cell_size);
-    if all(cell_pos == grid.cursor_pos) {
+    if all(glyph.cell_pos == grid.cursor_pos) {
         apply_cursor(&fg, &bg, local_pos);
     }
 
