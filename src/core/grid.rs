@@ -359,11 +359,14 @@ impl Grid {
             }
             let line = &self.buffer[row].inner;
             for (col, cell) in line.iter().enumerate() {
-                if row == begin.row && begin.col < col {
+                if row == begin.row && col < begin.col {
                     continue;
                 }
-                if row == end.row && col < end.col {
+                if row == end.row && end.col < col {
                     break 'a;
+                }
+                if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
+                    continue;
                 }
                 text.push(cell.c);
             }

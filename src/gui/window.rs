@@ -468,7 +468,6 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                    println!("{event:?}");
                 if event.state.is_pressed() {
                     use winit::keyboard::*;
 
@@ -481,9 +480,10 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                         if let Some(selection) = app.selection_text()
                             && let Ok(mut clipboard) = arboard::Clipboard::new()
                         {
-                            log::info!("copy!! : {selection}");
                             let _ = clipboard.set_text(selection);
                         }
+                        app.selection = None;
+                        app.window.request_redraw();
                         return;
                     }
                     // ペースト
