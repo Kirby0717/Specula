@@ -374,6 +374,25 @@ impl Grid {
         }
         text
     }
+    pub fn snap_selection(
+        &self,
+        mut begin: Point,
+        mut end: Point,
+    ) -> (Point, Point) {
+        if let Some(row) = self.buffer.get(begin.row)
+            && let Some(cell) = row.inner.get(begin.col)
+            && cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+        {
+            begin.col = begin.col.saturating_sub(1);
+        }
+        if let Some(row) = self.buffer.get(end.row)
+            && let Some(cell) = row.inner.get(end.col)
+            && cell.flags.contains(CellFlags::WIDE_CHAR)
+        {
+            end.col += 1;
+        }
+        (begin, end)
+    }
     pub fn viewport_offset(&self) -> usize {
         self.viewport_offset
     }

@@ -635,16 +635,19 @@ impl Terminal {
         self.core.cursor_style
     }
     pub fn grid_rows(&self) -> usize {
-        self.core.active_grid().grid_rows()
+        self.active_grid().grid_rows()
     }
     pub fn grid_cols(&self) -> usize {
-        self.core.active_grid().grid_cols()
+        self.active_grid().grid_cols()
     }
     pub fn scroll(&mut self, lines: isize) {
-        self.core.active_grid_mut().scroll(lines);
+        self.active_grid_mut().scroll(lines);
     }
     pub fn active_grid(&self) -> &Grid {
         self.core.active_grid()
+    }
+    pub fn active_grid_mut(&mut self) -> &mut Grid {
+        self.core.active_grid_mut()
     }
     pub fn mode(&self) -> TerminalMode {
         self.core.mode

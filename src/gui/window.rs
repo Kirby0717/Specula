@@ -214,7 +214,7 @@ impl App {
     fn convert_mouse_button_event(&self, button: MouseButton) -> MouseEvent {
         let Point { row, col } = self.cursor_cell();
         MouseEvent {
-            kind: if self.mouse_state.is_pressed() {
+            kind: if button.is_pressed() {
                 MouseEventKind::Press
             }
             else {
@@ -396,7 +396,6 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 else {
                     MouseButton::None
                 };
-                app.mouse_state = button;
 
                 // PTYへ送信
                 if app.mouse_report_active()
@@ -428,6 +427,8 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                     }
                     app.window.request_redraw();
                 }
+
+                app.mouse_state = button;
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 use winit::event::MouseScrollDelta;
