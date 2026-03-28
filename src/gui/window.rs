@@ -396,18 +396,19 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 else {
                     MouseButton::None
                 };
-                let sgr_mode =
-                    app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
-                let data = app
-                    .convert_mouse_button_event(button)
-                    .encode_mouse(&app.modifiers, sgr_mode);
                 app.mouse_state = button;
 
                 // PTYへ送信
                 if app.mouse_report_active()
                     && !app.modifiers.state().shift_key()
                 {
+                    let sgr_mode =
+                        app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
+                    let data = app
+                        .convert_mouse_button_event(button)
+                        .encode_mouse(&app.modifiers, sgr_mode);
                     app.terminal.write(&data);
+                    app.selection = None;
                 }
                 // ターミナルを選択
                 else {
