@@ -265,6 +265,16 @@ impl App {
         let row = row.min(grid.grid_rows() - 1);
         Point { row, col }
     }
+    fn snap_selection(&mut self) {
+        if let Some(selection) = &mut self.selection {
+            let (anchor, end) = self
+                .terminal
+                .active_grid()
+                .snap_selection(selection.anchor, selection.end);
+            selection.anchor = anchor;
+            selection.end = end;
+        }
+    }
     fn selection_text(&self) -> Option<String> {
         let Selection { anchor, end, .. } = self.selection.clone()?;
         Some(self.terminal.active_grid().get_text(anchor, end))
@@ -363,6 +373,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                     if let Some(selection) = &mut app.selection {
                         selection.end = Point { row, col };
                     }
+                    app.snap_selection();
                     app.window.request_redraw();
                 }
                 // PTYへ送信
@@ -424,6 +435,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                             kind: SelectionKind::Character,
                         };
                         app.selection = Some(selection);
+                        app.snap_selection();
                     }
                     app.window.request_redraw();
                 }
