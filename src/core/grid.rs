@@ -357,8 +357,8 @@ impl Grid {
             if self.buffer.len() <= row {
                 break;
             }
-            let line = &self.buffer[row].inner;
-            for (col, cell) in line.iter().enumerate() {
+            let mut line = String::new();
+            for (col, cell) in self.buffer[row].inner.iter().enumerate() {
                 if row == begin.row && col < begin.col {
                     continue;
                 }
@@ -368,9 +368,16 @@ impl Grid {
                 if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
                     continue;
                 }
-                text.push(cell.c);
+                line.push(cell.c);
             }
-            text.push('\n');
+            text.push_str(line.trim_end());
+            if row != end.row
+                && self.buffer[row].inner.last().is_some_and(|cell| {
+                    !cell.flags.contains(CellFlags::WRAPLINE)
+                })
+            {
+                text.push('\n');
+            }
         }
         text
     }
