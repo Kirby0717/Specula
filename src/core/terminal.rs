@@ -628,38 +628,17 @@ impl Terminal {
         }
         false
     }
-    pub fn cursor(&self) -> &CursorState {
-        self.active_grid().cursor()
-    }
-    pub fn cursor_style(&self) -> CursorStyle {
-        self.core.cursor_style
-    }
-    pub fn grid_rows(&self) -> usize {
-        self.active_grid().grid_rows()
-    }
-    pub fn grid_cols(&self) -> usize {
-        self.active_grid().grid_cols()
-    }
-    pub fn scroll(&mut self, lines: isize) {
-        self.active_grid_mut().scroll(lines);
-    }
     pub fn active_grid(&self) -> &Grid {
         self.core.active_grid()
     }
     pub fn active_grid_mut(&mut self) -> &mut Grid {
         self.core.active_grid_mut()
     }
+    pub fn cursor_style(&self) -> CursorStyle {
+        self.core.cursor_style
+    }
     pub fn mode(&self) -> TerminalMode {
         self.core.mode
-    }
-    pub fn viewport_row_to_buffer_index(&self, row: usize) -> usize {
-        self.active_grid().viewport_row_to_buffer_index(row)
-    }
-    pub fn buffer_index_to_viewport_row(&self, index: usize) -> isize {
-        self.active_grid().buffer_index_to_viewport_row(index)
-    }
-    pub fn get_text(&self, begin: Point, end: Point) -> String {
-        self.active_grid().get_text(begin, end)
     }
 }
 impl std::fmt::Debug for Terminal {

@@ -248,24 +248,26 @@ impl App {
         )
     }
     fn cursor_cell(&self) -> Point {
+        let grid = self.terminal.active_grid();
         let [cell_width, cell_height] = self.atlas.cell_size();
-        let row = (self.cursor_position[1] / cell_height as f64) as usize;
         let col = (self.cursor_position[0] / cell_width as f64) as usize;
-        let col = col.min(self.terminal.grid_cols() - 1);
-        let row = row.min(self.terminal.grid_rows() - 1);
+        let row = (self.cursor_position[1] / cell_height as f64) as usize;
+        let col = col.min(grid.grid_cols() - 1);
+        let row = row.min(grid.grid_rows() - 1);
         Point { row, col }
     }
     fn cursor_boundary_cell(&self) -> Point {
+        let grid = self.terminal.active_grid();
         let [cell_width, cell_height] = self.atlas.cell_size();
-        let row = (self.cursor_position[1] / cell_height as f64) as usize;
         let col = (self.cursor_position[0] / cell_width as f64 + 0.5) as usize;
-        let col = col.min(self.terminal.grid_cols());
-        let row = row.min(self.terminal.grid_rows() - 1);
+        let row = (self.cursor_position[1] / cell_height as f64) as usize;
+        let col = col.min(grid.grid_cols() - 1);
+        let row = row.min(grid.grid_rows() - 1);
         Point { row, col }
     }
     fn selection_text(&self) -> Option<String> {
         let Selection { anchor, end, .. } = self.selection.clone()?;
-        Some(self.terminal.get_text(anchor, end))
+        Some(self.terminal.active_grid().get_text(anchor, end))
     }
 }
 
@@ -309,19 +311,15 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             }
             WindowEvent::RedrawRequested => {
                 let selection = app.selection.clone().unwrap_or_default();
-                let anchor = app
-                    .terminal
+                let grid = app.terminal.active_grid();
+                let anchor = grid
                     .buffer_index_to_viewport_row(selection.anchor.row)
-                    * app.terminal.grid_cols() as isize
+                    * grid.grid_cols() as isize
                     + selection.anchor.col as isize;
-                let end = app
-                    .terminal
-                    .buffer_index_to_viewport_row(selection.end.row)
-                    * app.terminal.grid_cols() as isize
+                let end = grid.buffer_index_to_viewport_row(selection.end.row)
+                    * grid.grid_cols() as isize
                     + selection.end.col as isize;
-                let grid_size = (app.terminal.grid_rows()
-                    * app.terminal.grid_cols())
-                    as isize;
+                let grid_size = (grid.grid_rows() * grid.grid_cols()) as isize;
                 let anchor = anchor.clamp(0, grid_size) as u32;
                 let end = end.clamp(0, grid_size) as u32;
 
@@ -359,6 +357,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                     let cursor_cell = app.cursor_boundary_cell();
                     let row = app
                         .terminal
+                        .active_grid()
                         .viewport_row_to_buffer_index(cursor_cell.row);
                     let col = cursor_cell.col;
                     if let Some(selection) = &mut app.selection {
@@ -414,6 +413,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                     let cursor_cell = app.cursor_boundary_cell();
                     let row = app
                         .terminal
+                        .active_grid()
                         .viewport_row_to_buffer_index(cursor_cell.row);
                     let col = cursor_cell.col;
                     let point = Point { row, col };
@@ -458,7 +458,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 }
                 // ターミナルへ送信
                 else {
-                    app.terminal.scroll((delta * 3) as isize);
+                    app.terminal.active_grid_mut().scroll((delta * 3) as isize);
                 }
 
                 app.window.request_redraw();
