@@ -162,7 +162,7 @@ impl Default for Cell {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Point {
     pub row: usize,
     pub col: usize,

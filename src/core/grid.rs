@@ -54,19 +54,33 @@ pub struct Grid {
     saved_cursor: CursorState,
 }
 impl Grid {
-    const MIN_ROWS: usize = 1;
-    const MIN_COLS: usize = 1;
+    pub const MIN_ROWS: usize = 1;
+    pub const MIN_COLS: usize = 1;
+    pub const MAX_ROWS: usize = 10_000;
+    pub const MAX_COLS: usize = 10_000;
+    pub const MAX_SCROLLBACK: usize = 10_000_000;
     pub fn new(rows: usize, cols: usize, max_scrollback: usize) -> Self {
-        assert!(
-            Self::MIN_ROWS <= rows,
-            "行数は{}以上にしてください",
-            Self::MIN_ROWS
+        debug_assert!(
+            (Self::MIN_ROWS..=Self::MAX_ROWS).contains(&rows),
+            "行数は{}以上{}以下にしてください",
+            Self::MIN_ROWS,
+            Self::MAX_ROWS
         );
-        assert!(
-            Self::MIN_COLS <= cols,
-            "列数は{}以上にしてください",
-            Self::MIN_COLS
+        debug_assert!(
+            (Self::MIN_COLS..=Self::MAX_COLS).contains(&cols),
+            "列数は{}以上{}以下にしてください",
+            Self::MIN_COLS,
+            Self::MAX_COLS
         );
+        debug_assert!(
+            max_scrollback <= Self::MAX_SCROLLBACK,
+            "最大スクロールバック数は{}以下にしてください",
+            Self::MAX_SCROLLBACK
+        );
+
+        let rows = rows.clamp(Self::MIN_ROWS, Self::MAX_ROWS);
+        let cols = cols.clamp(Self::MIN_COLS, Self::MAX_COLS);
+        let max_scrollback = max_scrollback.min(Self::MAX_SCROLLBACK);
 
         let mut buffer = VecDeque::with_capacity(rows);
         for _ in 0..rows {
@@ -84,8 +98,21 @@ impl Grid {
         }
     }
     pub fn resize(&mut self, rows: usize, cols: usize) {
-        let rows = rows.max(Self::MIN_ROWS);
-        let cols = cols.max(Self::MIN_COLS);
+        assert!(
+            (Self::MIN_ROWS..=Self::MAX_ROWS).contains(&rows),
+            "行数は{}以上{}以下にしてください",
+            Self::MIN_ROWS,
+            Self::MAX_ROWS
+        );
+        assert!(
+            (Self::MIN_COLS..=Self::MAX_COLS).contains(&cols),
+            "列数は{}以上{}以下にしてください",
+            Self::MIN_COLS,
+            Self::MAX_COLS
+        );
+
+        let rows = rows.clamp(Self::MIN_ROWS, Self::MAX_ROWS);
+        let cols = cols.clamp(Self::MIN_COLS, Self::MAX_COLS);
         if rows != self.rows {
             if self.rows < rows {
                 let add = rows - self.rows;
@@ -343,6 +370,120 @@ impl Grid {
         let buffer_index =
             self.buffer.len() - self.rows - self.viewport_offset + row;
         &self.buffer[buffer_index].inner
+    }
+    pub fn viewport_row_to_buffer_index(&self, row: usize) -> usize {
+        self.buffer.len() - self.rows - self.viewport_offset + row
+    }
+    pub fn buffer_index_to_viewport_row(&self, index: usize) -> isize {
+        (index + self.viewport_offset + self.rows) as isize
+            - self.buffer.len() as isize
+    }
+    pub fn get_word_range(&self, Point { row, col }: Point) -> (usize, usize) {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        enum CharCategory {
+            Word,
+            Space,
+            Punctuation,
+        }
+        fn char_category(c: char) -> CharCategory {
+            if c.is_alphanumeric() || c == '_' {
+                CharCategory::Word
+            }
+            else if c.is_whitespace() {
+                CharCategory::Space
+            }
+            else {
+                CharCategory::Punctuation
+            }
+        }
+
+        if self.buffer.len() <= row || self.buffer[row].inner.len() <= col {
+            return (col, col);
+        }
+        let line = &self.buffer[row].inner;
+
+        let category = char_category(line[col].c);
+        let mut left = col;
+        while 0 < left {
+            if line[left - 1].flags.contains(CellFlags::WIDE_CHAR_SPACER) {
+                if char_category(line[left - 2].c) == category {
+                    left -= 2;
+                    continue;
+                }
+                else {
+                    break;
+                }
+            }
+            if char_category(line[left - 1].c) == category {
+                left -= 1;
+                continue;
+            }
+            break;
+        }
+        let mut right = col;
+        while right < line.len() {
+            if char_category(line[right].c) == category {
+                if line[right].flags.contains(CellFlags::WIDE_CHAR) {
+                    right += 2;
+                }
+                else {
+                    right += 1;
+                }
+                continue;
+            }
+            break;
+        }
+
+        (left, right)
+    }
+    pub fn get_text(&self, begin: Point, end: Point) -> String {
+        let mut text = String::new();
+        for row in begin.row..=end.row {
+            if self.buffer.len() <= row {
+                break;
+            }
+            let mut line = String::new();
+            for (col, cell) in self.buffer[row].inner.iter().enumerate() {
+                if row == begin.row && col < begin.col {
+                    continue;
+                }
+                if row == end.row && end.col < col {
+                    break;
+                }
+                if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                line.push(cell.c);
+            }
+            text.push_str(line.trim_end());
+            if row != end.row
+                && self.buffer[row].inner.last().is_some_and(|cell| {
+                    !cell.flags.contains(CellFlags::WRAPLINE)
+                })
+            {
+                text.push('\n');
+            }
+        }
+        text
+    }
+    pub fn snap_selection(
+        &self,
+        mut anchor: Point,
+        mut end: Point,
+    ) -> (Point, Point) {
+        if let Some(row) = self.buffer.get(anchor.row)
+            && let Some(cell) = row.inner.get(anchor.col)
+            && cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+        {
+            anchor.col = anchor.col.saturating_sub(1);
+        }
+        if let Some(row) = self.buffer.get(end.row)
+            && let Some(cell) = row.inner.get(end.col)
+            && cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)
+        {
+            end.col += 1;
+        }
+        (anchor, end)
     }
     pub fn viewport_offset(&self) -> usize {
         self.viewport_offset

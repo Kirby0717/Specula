@@ -1,7 +1,7 @@
 use super::{GlyphAtlas, GpuContext, Renderer};
-use crate::core::{Point, Terminal, TerminalMode};
+use crate::core::{Grid, Point, Terminal, TerminalMode};
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use winit::{
     application::ApplicationHandler,
@@ -126,6 +126,20 @@ impl MouseEvent {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct Selection {
+    anchor: Point,
+    end: Point,
+    kind: SelectionKind,
+}
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+enum SelectionKind {
+    #[default]
+    Character,
+    Word,
+    Line,
+}
+
 struct App {
     window: Arc<Window>,
     gpu: GpuContext,
@@ -134,10 +148,14 @@ struct App {
     terminal: Terminal,
 
     modifiers: Modifiers,
-    mouse_cell: Point,
+    cursor_position: [f64; 2],
     mouse_state: MouseButton,
+    last_click_time: Instant,
+    selection: Option<Selection>,
 }
 impl App {
+    const MULTI_CLICK_INTERVAL: std::time::Duration =
+        std::time::Duration::from_millis(500);
     fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
         let window = Arc::new(window);
         let mut gpu = GpuContext::new(&window);
@@ -180,8 +198,10 @@ impl App {
             terminal,
 
             modifiers: Modifiers::default(),
-            mouse_cell: Point::default(),
+            cursor_position: [0.0, 0.0],
             mouse_state: MouseButton::default(),
+            last_click_time: Instant::now(),
+            selection: None,
         }
     }
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -195,35 +215,30 @@ impl App {
         self.terminal.resize(rows, cols);
         self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
     }
-    fn convert_mouse_button_event(
-        &mut self,
-        button: MouseButton,
-    ) -> MouseEvent {
-        self.mouse_state = button;
+    fn convert_mouse_button_event(&self, button: MouseButton) -> MouseEvent {
+        let Point { row, col } = self.cursor_cell();
         MouseEvent {
-            kind: if self.mouse_state.is_pressed() {
+            kind: if button.is_pressed() {
                 MouseEventKind::Press
             }
             else {
                 MouseEventKind::Release
             },
             button,
-            col: self.mouse_cell.col,
-            row: self.mouse_cell.row,
+            col,
+            row,
             shift: self.modifiers.state().shift_key(),
             alt: self.modifiers.state().alt_key(),
             ctrl: self.modifiers.state().control_key(),
         }
     }
-    fn convert_mouse_cursor_event(
-        &mut self,
-        button: MouseButton,
-    ) -> MouseEvent {
+    fn convert_mouse_cursor_event(&self, button: MouseButton) -> MouseEvent {
+        let Point { row, col } = self.cursor_cell();
         MouseEvent {
             kind: MouseEventKind::Motion,
             button,
-            col: self.mouse_cell.col,
-            row: self.mouse_cell.row,
+            col,
+            row,
             shift: self.modifiers.state().shift_key(),
             alt: self.modifiers.state().alt_key(),
             ctrl: self.modifiers.state().control_key(),
@@ -236,13 +251,69 @@ impl App {
                 | TerminalMode::MOUSE_MOTION,
         )
     }
-    fn pixel_to_cell(&self, x: f64, y: f64) -> Point {
+    fn cursor_cell(&self) -> Point {
+        let grid = self.terminal.active_grid();
         let [cell_width, cell_height] = self.atlas.cell_size();
-        let row = (y / cell_height as f64) as usize;
-        let col = (x / cell_width as f64) as usize;
-        let col = col.min(self.terminal.grid_cols() - 1);
-        let row = row.min(self.terminal.grid_rows() - 1);
+        let col = (self.cursor_position[0] / cell_width as f64) as usize;
+        let row = (self.cursor_position[1] / cell_height as f64) as usize;
+        let col = col.min(grid.grid_cols() - 1);
+        let row = row.min(grid.grid_rows() - 1);
         Point { row, col }
+    }
+    fn cursor_boundary_cell(&self) -> Point {
+        let grid = self.terminal.active_grid();
+        let [cell_width, cell_height] = self.atlas.cell_size();
+        let col = (self.cursor_position[0] / cell_width as f64 + 0.5) as usize;
+        let row = (self.cursor_position[1] / cell_height as f64) as usize;
+        let col = col.min(grid.grid_cols());
+        let row = row.min(grid.grid_rows() - 1);
+        Point { row, col }
+    }
+    fn snap_selection(&mut self) {
+        if let Some(selection) = &mut self.selection {
+            let (anchor, end) = self
+                .terminal
+                .active_grid()
+                .snap_selection(selection.anchor, selection.end);
+            selection.anchor = anchor;
+            selection.end = end;
+        }
+    }
+    fn selection_range(&self) -> Option<(Point, Point)> {
+        let Selection { anchor, end, kind } = self.selection?;
+        let (l, r) = if anchor < end {
+            (anchor, end)
+        }
+        else {
+            (end, anchor)
+        };
+        match kind {
+            SelectionKind::Character => Some((l, r)),
+            SelectionKind::Word => {
+                let grid = self.terminal.active_grid();
+                let l = l.min(Point {
+                    row: l.row,
+                    col: grid.get_word_range(l).0,
+                });
+                let r = r.max(Point {
+                    row: r.row,
+                    col: grid.get_word_range(r).1,
+                });
+                Some((l, r))
+            }
+            SelectionKind::Line => {
+                let l = l.min(Point { row: l.row, col: 0 });
+                let r = r.max(Point {
+                    row: r.row,
+                    col: Grid::MAX_COLS,
+                });
+                Some((l, r))
+            }
+        }
+    }
+    fn selection_text(&self) -> Option<String> {
+        let (begin, end) = self.selection_range()?;
+        Some(self.terminal.active_grid().get_text(begin, end))
     }
 }
 
@@ -285,11 +356,25 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
+                let grid = app.terminal.active_grid();
+                let grid_rows = grid.grid_rows() as isize;
+                let grid_cols = grid.grid_cols() as isize;
+                let grid_size = grid_rows * grid_cols;
+                let into_grid_index = |Point { row, col }: Point| -> u32 {
+                    let col = col.min(grid.grid_cols()) as isize;
+                    let viewport_row = grid.buffer_index_to_viewport_row(row);
+                    (viewport_row * grid_cols + col).clamp(0, grid_size) as u32
+                };
+                let (begin, end) = app.selection_range().unwrap_or_default();
+                let begin = into_grid_index(begin);
+                let end = into_grid_index(end);
+
                 app.renderer.render(
                     &app.window,
                     &app.gpu,
                     &mut app.atlas,
                     &app.terminal,
+                    [begin, end],
                 );
             }
             WindowEvent::Resized(size) => {
@@ -310,23 +395,46 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 app.modifiers = new_modifiers;
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let new_cell = app.pixel_to_cell(position.x, position.y);
-                if app.mouse_cell == new_cell {
-                    return;
-                }
-                app.mouse_cell = new_cell;
+                app.cursor_position = [position.x, position.y];
 
-                let mode = app.terminal.mode();
-                if mode.contains(TerminalMode::MOUSE_MOTION)
-                    || (mode.contains(TerminalMode::MOUSE_DRAG)
-                        && app.mouse_state.is_pressed())
+                // ターミナル選択
+                if let Some(selection) = app.selection
+                    && app.mouse_state.is_pressed()
                 {
-                    let sgr_mode =
-                        app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
-                    let data = app
-                        .convert_mouse_cursor_event(app.mouse_state)
-                        .encode_mouse(&app.modifiers, sgr_mode);
-                    app.terminal.write(&data);
+                    let cursor_cell = if selection.kind == SelectionKind::Word {
+                        app.cursor_cell()
+                    }
+                    else {
+                        app.cursor_boundary_cell()
+                    };
+                    let row = app
+                        .terminal
+                        .active_grid()
+                        .viewport_row_to_buffer_index(cursor_cell.row);
+                    let col = cursor_cell.col;
+                    app.selection = Some(Selection {
+                        end: Point { row, col },
+                        ..selection
+                    });
+                    app.snap_selection();
+                    app.window.request_redraw();
+                }
+                // PTYへ送信
+                else {
+                    let mode = app.terminal.mode();
+                    if mode.contains(TerminalMode::MOUSE_MOTION)
+                        || (mode.contains(TerminalMode::MOUSE_DRAG)
+                            && app.mouse_state.is_pressed())
+                    {
+                        let sgr_mode = app
+                            .terminal
+                            .mode()
+                            .contains(TerminalMode::MOUSE_SGR);
+                        let data = app
+                            .convert_mouse_cursor_event(app.mouse_state)
+                            .encode_mouse(&app.modifiers, sgr_mode);
+                        app.terminal.write(&data);
+                    }
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
@@ -341,14 +449,56 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 else {
                     MouseButton::None
                 };
-                let sgr_mode =
-                    app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
-                let data = app
-                    .convert_mouse_button_event(button)
-                    .encode_mouse(&app.modifiers, sgr_mode);
-                if app.mouse_report_active() {
+                let now = Instant::now();
+
+                // PTYへ送信
+                if app.mouse_report_active()
+                    && !app.modifiers.state().shift_key()
+                {
+                    let sgr_mode =
+                        app.terminal.mode().contains(TerminalMode::MOUSE_SGR);
+                    let data = app
+                        .convert_mouse_button_event(button)
+                        .encode_mouse(&app.modifiers, sgr_mode);
                     app.terminal.write(&data);
+                    app.selection = None;
                 }
+                // ターミナルを選択
+                else {
+                    let cursor_cell = app.cursor_boundary_cell();
+                    let row = app
+                        .terminal
+                        .active_grid()
+                        .viewport_row_to_buffer_index(cursor_cell.row);
+                    let col = cursor_cell.col;
+                    let point = Point { row, col };
+                    if state.is_pressed() {
+                        let kind = if now.duration_since(app.last_click_time)
+                            < App::MULTI_CLICK_INTERVAL
+                            && let Some(selection) = &app.selection
+                        {
+                            match selection.kind {
+                                SelectionKind::Character => SelectionKind::Word,
+                                SelectionKind::Word => SelectionKind::Line,
+                                SelectionKind::Line => SelectionKind::Character,
+                            }
+                        }
+                        else {
+                            SelectionKind::Character
+                        };
+                        let selection = Selection {
+                            anchor: point,
+                            end: point,
+                            kind,
+                        };
+                        app.selection = Some(selection);
+                        app.snap_selection();
+                        app.last_click_time = now;
+                    }
+                    app.window.request_redraw();
+                }
+
+                app.mouse_state = button;
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 use winit::event::MouseScrollDelta;
@@ -378,7 +528,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 }
                 // ターミナルへ送信
                 else {
-                    app.terminal.scroll((delta * 3) as isize);
+                    app.terminal.active_grid_mut().scroll((delta * 3) as isize);
                 }
 
                 app.window.request_redraw();
@@ -393,6 +543,21 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 if event.state.is_pressed() {
                     use winit::keyboard::*;
 
+                    // コピー
+                    if app.modifiers.state().control_key()
+                        && app.modifiers.state().shift_key()
+                        && event.physical_key
+                            == PhysicalKey::Code(KeyCode::KeyC)
+                    {
+                        if let Some(selection) = app.selection_text()
+                            && let Ok(mut clipboard) = arboard::Clipboard::new()
+                        {
+                            let _ = clipboard.set_text(selection);
+                        }
+                        app.selection = None;
+                        app.window.request_redraw();
+                        return;
+                    }
                     // ペースト
                     if app.modifiers.state().control_key()
                         && app.modifiers.state().shift_key()

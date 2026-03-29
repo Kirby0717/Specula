@@ -1,5 +1,5 @@
 use super::{
-    cell::{Cell, Color},
+    cell::{Cell, Color, Point},
     grid::{CursorState, Grid},
 };
 
@@ -628,23 +628,14 @@ impl Terminal {
         }
         false
     }
-    pub fn cursor(&self) -> &CursorState {
-        self.active_grid().cursor()
+    pub fn active_grid(&self) -> &Grid {
+        self.core.active_grid()
+    }
+    pub fn active_grid_mut(&mut self) -> &mut Grid {
+        self.core.active_grid_mut()
     }
     pub fn cursor_style(&self) -> CursorStyle {
         self.core.cursor_style
-    }
-    pub fn grid_rows(&self) -> usize {
-        self.core.active_grid().grid_rows()
-    }
-    pub fn grid_cols(&self) -> usize {
-        self.core.active_grid().grid_cols()
-    }
-    pub fn scroll(&mut self, lines: isize) {
-        self.core.active_grid_mut().scroll(lines);
-    }
-    pub fn active_grid(&self) -> &Grid {
-        self.core.active_grid()
     }
     pub fn mode(&self) -> TerminalMode {
         self.core.mode

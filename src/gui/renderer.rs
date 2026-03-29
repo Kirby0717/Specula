@@ -105,6 +105,7 @@ pub struct GridUniform {
     cursor_style: u32,
     _padding1: u32,
     viewport_size: [f32; 2],
+    selection_range: [u32; 2],
 }
 
 pub struct Renderer {
@@ -125,6 +126,7 @@ impl Renderer {
     ) -> Self {
         use wgpu::util::DeviceExt as _;
         let device = &gpu.device;
+        let grid = terminal.active_grid();
 
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("./shader.wgsl"));
@@ -135,25 +137,21 @@ impl Renderer {
         });
         let cell_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CellBuffer"),
-            size: (terminal.grid_rows()
-                * terminal.grid_cols()
-                * size_of::<GpuCell>()) as u64,
+            size: (grid.grid_rows() * grid.grid_cols() * size_of::<GpuCell>())
+                as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let [cell_width, cell_height] = atlas.cell_size();
         let uniform = GridUniform {
             cell_size: [cell_width as f32, cell_height as f32],
-            grid_size: [
-                terminal.grid_cols() as u32,
-                terminal.grid_rows() as u32,
-            ],
+            grid_size: [grid.grid_cols() as u32, grid.grid_rows() as u32],
             atlas_size: [
                 GlyphAtlas::ATLAS_SIZE as f32,
                 GlyphAtlas::ATLAS_SIZE as f32,
             ],
             cursor_pos: {
-                let point = terminal.cursor().point;
+                let point = grid.cursor().point;
                 [point.col as u32, point.row as u32]
             },
             cursor_style: terminal.cursor_style() as u32,
@@ -162,6 +160,7 @@ impl Renderer {
                 let window_size = gpu.size;
                 [window_size.width as f32, window_size.height as f32]
             },
+            selection_range: [0, 0],
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -388,6 +387,7 @@ impl Renderer {
         gpu: &GpuContext,
         atlas: &mut GlyphAtlas,
         terminal: &Terminal,
+        selection_range: [u32; 2],
     ) {
         // スワップチェーンのバックバッファの取得
         let surface_texture = gpu
@@ -482,18 +482,19 @@ impl Renderer {
         );
 
         // Uniformの更新
-        let point = terminal.cursor().point;
+        let point = grid.cursor().point;
         self.uniform.cursor_pos = [
             point.col as u32,
             (point.row + grid.viewport_offset()) as u32,
         ];
+        self.uniform.selection_range = selection_range;
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::bytes_of(&GridUniform {
                 cursor_style: {
                     if terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
-                        self.uniform.cursor_style
+                        terminal.cursor_style() as u32
                     }
                     else {
                         crate::core::CursorStyle::Hidden as u32
