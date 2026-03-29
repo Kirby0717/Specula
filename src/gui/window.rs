@@ -1,7 +1,7 @@
 use super::{GlyphAtlas, GpuContext, Renderer};
-use crate::core::{Point, Terminal, TerminalMode};
+use crate::core::{Grid, Point, Terminal, TerminalMode};
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use winit::{
     application::ApplicationHandler,
@@ -126,7 +126,7 @@ impl MouseEvent {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 struct Selection {
     anchor: Point,
     end: Point,
@@ -150,9 +150,12 @@ struct App {
     modifiers: Modifiers,
     cursor_position: [f64; 2],
     mouse_state: MouseButton,
+    last_click_time: Instant,
     selection: Option<Selection>,
 }
 impl App {
+    const MULTI_CLICK_INTERVAL: std::time::Duration =
+        std::time::Duration::from_millis(500);
     fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
         let window = Arc::new(window);
         let mut gpu = GpuContext::new(&window);
@@ -197,6 +200,7 @@ impl App {
             modifiers: Modifiers::default(),
             cursor_position: [0.0, 0.0],
             mouse_state: MouseButton::default(),
+            last_click_time: Instant::now(),
             selection: None,
         }
     }
@@ -275,9 +279,41 @@ impl App {
             selection.end = end;
         }
     }
+    fn selection_range(&self) -> Option<(Point, Point)> {
+        let Selection { anchor, end, kind } = self.selection?;
+        let (l, r) = if anchor < end {
+            (anchor, end)
+        }
+        else {
+            (end, anchor)
+        };
+        match kind {
+            SelectionKind::Character => Some((l, r)),
+            SelectionKind::Word => {
+                let grid = self.terminal.active_grid();
+                let l = l.min(Point {
+                    row: l.row,
+                    col: grid.get_word_range(l).0,
+                });
+                let r = r.max(Point {
+                    row: r.row,
+                    col: grid.get_word_range(r).1,
+                });
+                Some((l, r))
+            }
+            SelectionKind::Line => {
+                let l = l.min(Point { row: l.row, col: 0 });
+                let r = r.max(Point {
+                    row: r.row,
+                    col: Grid::MAX_COLS,
+                });
+                Some((l, r))
+            }
+        }
+    }
     fn selection_text(&self) -> Option<String> {
-        let Selection { anchor, end, .. } = self.selection.clone()?;
-        Some(self.terminal.active_grid().get_text(anchor, end))
+        let (begin, end) = self.selection_range()?;
+        Some(self.terminal.active_grid().get_text(begin, end))
     }
 }
 
@@ -320,26 +356,25 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                let selection = app.selection.clone().unwrap_or_default();
                 let grid = app.terminal.active_grid();
-                let anchor = grid
-                    .buffer_index_to_viewport_row(selection.anchor.row)
-                    * grid.grid_cols() as isize
-                    + selection.anchor.col as isize;
-                let end = grid.buffer_index_to_viewport_row(selection.end.row)
-                    * grid.grid_cols() as isize
-                    + selection.end.col as isize;
-                let grid_size = (grid.grid_rows() * grid.grid_cols()) as isize;
-                let anchor = anchor.clamp(0, grid_size) as u32;
-                let end = end.clamp(0, grid_size) as u32;
+                let grid_rows = grid.grid_rows() as isize;
+                let grid_cols = grid.grid_cols() as isize;
+                let grid_size = grid_rows * grid_cols;
+                let into_grid_index = |Point { row, col }: Point| -> u32 {
+                    let col = col.min(grid.grid_cols()) as isize;
+                    let viewport_row = grid.buffer_index_to_viewport_row(row);
+                    (viewport_row * grid_cols + col).clamp(0, grid_size) as u32
+                };
+                let (begin, end) = app.selection_range().unwrap_or_default();
+                let begin = into_grid_index(begin);
+                let end = into_grid_index(end);
 
-                let selection_range = [anchor.min(end), anchor.max(end)];
                 app.renderer.render(
                     &app.window,
                     &app.gpu,
                     &mut app.atlas,
                     &app.terminal,
-                    selection_range,
+                    [begin, end],
                 );
             }
             WindowEvent::Resized(size) => {
@@ -406,6 +441,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 else {
                     MouseButton::None
                 };
+                let now = Instant::now();
 
                 // PTYへ送信
                 if app.mouse_report_active()
@@ -429,13 +465,27 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                     let col = cursor_cell.col;
                     let point = Point { row, col };
                     if state.is_pressed() {
+                        let kind = if now.duration_since(app.last_click_time)
+                            < App::MULTI_CLICK_INTERVAL
+                            && let Some(selection) = &app.selection
+                        {
+                            match selection.kind {
+                                SelectionKind::Character => SelectionKind::Word,
+                                SelectionKind::Word => SelectionKind::Line,
+                                SelectionKind::Line => SelectionKind::Character,
+                            }
+                        }
+                        else {
+                            SelectionKind::Character
+                        };
                         let selection = Selection {
                             anchor: point,
                             end: point,
-                            kind: SelectionKind::Character,
+                            kind,
                         };
                         app.selection = Some(selection);
                         app.snap_selection();
+                        app.last_click_time = now;
                     }
                     app.window.request_redraw();
                 }

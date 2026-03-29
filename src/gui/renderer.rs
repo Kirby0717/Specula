@@ -494,7 +494,7 @@ impl Renderer {
             bytemuck::bytes_of(&GridUniform {
                 cursor_style: {
                     if terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
-                        self.uniform.cursor_style
+                        terminal.cursor_style() as u32
                     }
                     else {
                         crate::core::CursorStyle::Hidden as u32
