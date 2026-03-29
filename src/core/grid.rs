@@ -438,7 +438,7 @@ impl Grid {
     }
     pub fn get_text(&self, begin: Point, end: Point) -> String {
         let mut text = String::new();
-        'a: for row in begin.row..=end.row {
+        for row in begin.row..=end.row {
             if self.buffer.len() <= row {
                 break;
             }
@@ -448,7 +448,7 @@ impl Grid {
                     continue;
                 }
                 if row == end.row && end.col < col {
-                    break 'a;
+                    break;
                 }
                 if cell.flags.contains(CellFlags::WIDE_CHAR_SPACER) {
                     continue;

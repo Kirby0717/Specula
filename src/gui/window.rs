@@ -265,7 +265,7 @@ impl App {
         let [cell_width, cell_height] = self.atlas.cell_size();
         let col = (self.cursor_position[0] / cell_width as f64 + 0.5) as usize;
         let row = (self.cursor_position[1] / cell_height as f64) as usize;
-        let col = col.min(grid.grid_cols() - 1);
+        let col = col.min(grid.grid_cols());
         let row = row.min(grid.grid_rows() - 1);
         Point { row, col }
     }
@@ -398,16 +398,24 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 app.cursor_position = [position.x, position.y];
 
                 // ターミナル選択
-                if app.selection.is_some() && app.mouse_state.is_pressed() {
-                    let cursor_cell = app.cursor_boundary_cell();
+                if let Some(selection) = app.selection
+                    && app.mouse_state.is_pressed()
+                {
+                    let cursor_cell = if selection.kind == SelectionKind::Word {
+                        app.cursor_cell()
+                    }
+                    else {
+                        app.cursor_boundary_cell()
+                    };
                     let row = app
                         .terminal
                         .active_grid()
                         .viewport_row_to_buffer_index(cursor_cell.row);
                     let col = cursor_cell.col;
-                    if let Some(selection) = &mut app.selection {
-                        selection.end = Point { row, col };
-                    }
+                    app.selection = Some(Selection {
+                        end: Point { row, col },
+                        ..selection
+                    });
                     app.snap_selection();
                     app.window.request_redraw();
                 }
