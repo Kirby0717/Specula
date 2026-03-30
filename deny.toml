@@ -99,7 +99,7 @@ allow = [
   "Zlib",
   "CC0-1.0",
   "ISC",
-  #"MPL-2.0",
+  "MPL-2.0",
   #"Unlicense",
   #"Apache-2.0 WITH LLVM-exception",
 ]
