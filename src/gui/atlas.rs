@@ -1,4 +1,5 @@
 use super::GpuContext;
+use crate::core::CellFlags;
 
 use std::collections::HashMap;
 
@@ -6,13 +7,56 @@ use fontdb::{Database, Family, Query, Style, Weight};
 use fontdue::Font;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GlyphInfo {
+pub(super) struct GlyphInfo {
     pub uv_rect: [f32; 4],
     // 左上基準
     pub offset: [f32; 2],
     pub size: [f32; 2],
+    pub style: FontStyle,
 }
-pub struct GlyphAtlas {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) struct GlyphKey {
+    pub c: char,
+    pub style: FontStyle,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum FontStyle {
+    Regular,
+    Bold,
+    Italic,
+    BoldItalic,
+}
+impl FontStyle {
+    fn fallback_chain(self) -> &'static [FontStyle] {
+        match self {
+            FontStyle::Regular => &[],
+            FontStyle::Bold => &[FontStyle::Regular],
+            FontStyle::Italic => &[FontStyle::Regular],
+            FontStyle::BoldItalic => {
+                &[FontStyle::Bold, FontStyle::Italic, FontStyle::Regular]
+            }
+        }
+    }
+    pub fn from_cell_flags(flags: CellFlags) -> Self {
+        match (
+            flags.contains(CellFlags::BOLD),
+            flags.contains(CellFlags::ITALIC),
+        ) {
+            (true, true) => FontStyle::BoldItalic,
+            (true, false) => FontStyle::Bold,
+            (false, true) => FontStyle::Italic,
+            (false, false) => FontStyle::Regular,
+        }
+    }
+    pub fn is_bold(self) -> bool {
+        matches!(self, FontStyle::Bold | FontStyle::BoldItalic)
+    }
+    pub fn is_italic(self) -> bool {
+        matches!(self, FontStyle::Italic | FontStyle::BoldItalic)
+    }
+}
+#[derive(Debug)]
+pub(super) struct GlyphAtlas {
     // フォント
     font: Font,
     font_bold: Option<Font>,
@@ -21,7 +65,7 @@ pub struct GlyphAtlas {
     ascent: i32,
     px: f32,
     // キャッシュ
-    cache: HashMap<char, GlyphInfo>,
+    cache: HashMap<GlyphKey, GlyphInfo>,
     // テクスチャ
     texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -129,13 +173,49 @@ impl GlyphAtlas {
         let w = m.advance_width.ceil() as u32;
         [w, h]
     }
-    pub fn get_or_insert(&mut self, gpu: &GpuContext, c: char) -> GlyphInfo {
-        if let Some(index) = self.cache.get(&c) {
-            return *index;
+    fn font_for_style(&self, style: FontStyle) -> Option<&Font> {
+        match style {
+            FontStyle::Regular => Some(&self.font),
+            FontStyle::Bold => self.font_bold.as_ref(),
+            FontStyle::Italic => self.font_italic.as_ref(),
+            FontStyle::BoldItalic => self.font_bold_italic.as_ref(),
+        }
+    }
+    fn resolve_font(&self, style: FontStyle) -> (&Font, FontStyle) {
+        if let Some(font) = self.font_for_style(style) {
+            return (font, style);
+        }
+        for &fallback in style.fallback_chain() {
+            if let Some(font) = self.font_for_style(fallback) {
+                return (font, fallback);
+            }
+        }
+        (&self.font, FontStyle::Regular)
+    }
+    pub fn get_or_insert(
+        &mut self,
+        gpu: &GpuContext,
+        key: GlyphKey,
+    ) -> GlyphInfo {
+        if let Some(&info) = self.cache.get(&key) {
+            return info;
+        }
+
+        // 実際に使うフォントの決定
+        let (font, resolved_style) = self.resolve_font(key.style);
+
+        // すでにあるならそれを返す
+        if let Some(&info) = self.cache.get(&GlyphKey {
+            c: key.c,
+            style: resolved_style,
+        }) {
+            self.cache.insert(key, info);
+            return info;
         }
 
         // フォントのラスタライズ
-        let (metrics, bitmap) = self.font.rasterize(c, self.px);
+        let (metrics, bitmap) = font.rasterize(key.c, self.px);
+
         let width = metrics.width as u32;
         let height = metrics.height as u32;
 
@@ -144,8 +224,9 @@ impl GlyphAtlas {
                 uv_rect: [0.0, 0.0, 0.0, 0.0],
                 offset: [0.0, 0.0],
                 size: [0.0, 0.0],
+                style: key.style,
             };
-            self.cache.insert(c, info);
+            self.cache.insert(key, info);
             return info;
         }
 
@@ -207,9 +288,10 @@ impl GlyphAtlas {
                 (self.ascent - metrics.ymin - height as i32) as f32,
             ],
             size: [widthf, heightf],
+            style: resolved_style,
         };
 
-        self.cache.insert(c, info);
+        self.cache.insert(key, info);
         info
     }
 }

@@ -1,4 +1,4 @@
-use super::atlas::{GlyphAtlas, GlyphInfo};
+use super::atlas::{FontStyle, GlyphAtlas, GlyphInfo, GlyphKey};
 use crate::core::{CellFlags, Terminal, TerminalMode};
 
 use std::sync::Arc;
@@ -438,10 +438,24 @@ impl Renderer {
                     uv_rect,
                     offset,
                     size,
-                } = atlas.get_or_insert(gpu, cell.c);
+                    style,
+                } = atlas.get_or_insert(
+                    gpu,
+                    GlyphKey {
+                        c: cell.c,
+                        style: FontStyle::from_cell_flags(cell.flags),
+                    },
+                );
+                let mut flags = cell.flags;
+                if style.is_bold() {
+                    flags.remove(CellFlags::BOLD);
+                }
+                if style.is_italic() {
+                    flags.remove(CellFlags::ITALIC);
+                }
+                let flags = flags.bits() as u32;
                 let fg = cell.fg.color_to_rgba();
                 let bg = cell.bg.color_to_rgba();
-                let flags = cell.flags.bits() as u32;
                 if size[0] <= 0.0
                     || size[1] <= 0.0
                     || cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)

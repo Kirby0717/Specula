@@ -4,8 +4,8 @@ mod renderer;
 mod window;
 
 use app::App;
-pub use atlas::GlyphAtlas;
-pub use renderer::{GpuContext, Renderer};
+use atlas::GlyphAtlas;
+use renderer::{GpuContext, Renderer};
 
 pub(super) enum TermEvent {
     PtyOutput,
