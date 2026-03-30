@@ -8,11 +8,9 @@ fn main() -> anyhow::Result<()> {
     log_init();
     setup_panic_hook();
 
-    let config = config::Config::load();
-    log::info!("{config:?}");
-    panic!();
+    let config = config::Config::load().unwrap_or_default();
 
-    gui::run_app()?;
+    gui::run_app(config)?;
 
     Ok(())
 }

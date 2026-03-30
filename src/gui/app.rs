@@ -26,12 +26,16 @@ pub(super) struct App {
 impl App {
     pub const MULTI_CLICK_INTERVAL: std::time::Duration =
         std::time::Duration::from_millis(500);
-    pub fn new(window: Window, proxy: &EventLoopProxy<TermEvent>) -> Self {
+    pub fn new(
+        window: Window,
+        proxy: &EventLoopProxy<TermEvent>,
+        config: &crate::config::Config,
+    ) -> Self {
         let window = Arc::new(window);
         let mut gpu = GpuContext::new(&window);
         gpu.configure_surface();
 
-        let atlas = GlyphAtlas::new(&gpu, 24.0);
+        let atlas = GlyphAtlas::new(&gpu, &config.font);
         let cell_size = atlas.cell_size();
         let cell_width = cell_size[0];
         let cell_height = cell_size[1];
@@ -50,9 +54,9 @@ impl App {
         let terminal = Terminal::new(
             rows as usize,
             cols as usize,
-            1_000_000,
-            "nu",
-            &["--no-history"],
+            config.scrollback,
+            &config.shell.program,
+            &config.shell.args,
             notify,
             on_exit,
         )

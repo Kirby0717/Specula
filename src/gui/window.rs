@@ -6,6 +6,7 @@ pub use mouse::{MouseButton, MouseEvent, MouseEventKind};
 pub use selection::{Selection, SelectionKind};
 
 use super::{App, TermEvent};
+use crate::config::Config;
 
 use winit::{
     application::ApplicationHandler, event::WindowEvent,
@@ -14,11 +15,16 @@ use winit::{
 
 pub struct AppHandler {
     app: Option<App>,
+    config: Config,
     proxy: EventLoopProxy<TermEvent>,
 }
 impl AppHandler {
-    pub fn new(proxy: EventLoopProxy<TermEvent>) -> Self {
-        AppHandler { app: None, proxy }
+    pub fn new(proxy: EventLoopProxy<TermEvent>, config: Config) -> Self {
+        AppHandler {
+            app: None,
+            config,
+            proxy,
+        }
     }
 }
 impl ApplicationHandler<TermEvent> for AppHandler {
@@ -33,7 +39,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             .create_window(window_attributes)
             .expect("ウィンドウの作成に失敗しました");
         window.set_ime_allowed(true);
-        self.app = Some(App::new(window, &self.proxy));
+        self.app = Some(App::new(window, &self.proxy, &self.config));
     }
     fn window_event(
         &mut self,

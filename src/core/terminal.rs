@@ -477,7 +477,7 @@ pub struct Pty {
 impl Pty {
     fn new(
         shell: &str,
-        args: &[&str],
+        args: &[String],
         size: portable_pty::PtySize,
         notify: Box<dyn Fn() + Send>,
         on_exit: Box<dyn FnOnce() + Send>,
@@ -563,7 +563,7 @@ impl Terminal {
         cols: usize,
         max_scrollback: usize,
         shell: &str,
-        args: &[&str],
+        args: &[String],
         notify: Box<dyn Fn() + Send>,
         on_exit: Box<dyn FnOnce() + Send>,
     ) -> anyhow::Result<Self> {

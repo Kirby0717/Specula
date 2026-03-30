@@ -11,7 +11,7 @@ pub struct Config {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FontConfig {
-    pub family: String,
+    pub family: Option<String>,
     pub size: f32,
     pub bold: Option<FontStyleConfig>,
     pub italic: Option<FontStyleConfig>,
@@ -20,6 +20,7 @@ pub struct FontConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FontStyleConfig {
     pub family: Option<String>,
+    pub weight: Option<String>,
     pub style: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -66,12 +67,56 @@ pub struct AnsiColors {
 impl Default for FontConfig {
     fn default() -> Self {
         Self {
-            family: "monospace".to_string(),
+            family: None,
             size: 16.0,
             bold: None,
             italic: None,
             bold_italic: None,
         }
+    }
+}
+impl FontStyleConfig {
+    pub fn resolve<'a>(
+        &'a self,
+        default_family: &'a str,
+        default_weight: fontdb::Weight,
+        default_style: fontdb::Style,
+    ) -> (&'a str, fontdb::Weight, fontdb::Style) {
+        (
+            self.family.as_deref().unwrap_or(default_family),
+            self.weight
+                .as_deref()
+                .map(parse_weight)
+                .unwrap_or(default_weight),
+            self.style
+                .as_deref()
+                .map(parse_style)
+                .unwrap_or(default_style),
+        )
+    }
+}
+fn parse_weight(s: &str) -> fontdb::Weight {
+    match s.to_lowercase().as_str() {
+        "thin" => fontdb::Weight::THIN,
+        "extralight" => fontdb::Weight::EXTRA_LIGHT,
+        "light" => fontdb::Weight::LIGHT,
+        "normal" | "regular" => fontdb::Weight::NORMAL,
+        "medium" => fontdb::Weight::MEDIUM,
+        "semibold" => fontdb::Weight::SEMIBOLD,
+        "bold" => fontdb::Weight::BOLD,
+        "extrabold" => fontdb::Weight::EXTRA_BOLD,
+        "black" => fontdb::Weight::BLACK,
+        other => other
+            .parse::<u16>()
+            .map(fontdb::Weight)
+            .unwrap_or(fontdb::Weight::NORMAL),
+    }
+}
+fn parse_style(s: &str) -> fontdb::Style {
+    match s.to_lowercase().as_str() {
+        "italic" => fontdb::Style::Italic,
+        "oblique" => fontdb::Style::Oblique,
+        _ => fontdb::Style::Normal,
     }
 }
 impl Default for Config {
