@@ -24,44 +24,6 @@ pub enum NamedColor {
     Foreground = 16,
     Background = 17,
 }
-static PALETTE: [[u8; 3]; 18] = [
-    // Black
-    [0, 0, 0],
-    // Red
-    [205, 0, 0],
-    // Green
-    [0, 205, 0],
-    // Yellow
-    [205, 205, 0],
-    // Blue
-    [0, 0, 238],
-    // Magenta
-    [205, 0, 205],
-    // Cyan
-    [0, 205, 205],
-    // White
-    [229, 229, 229],
-    // BrightBlack
-    [127, 127, 127],
-    // BrightRed
-    [255, 0, 0],
-    // BrightGreen
-    [0, 255, 0],
-    // BrightYellow
-    [255, 255, 0],
-    // BrightBlue
-    [92, 92, 255],
-    // BrightMagenta
-    [255, 0, 255],
-    // BrightCyan
-    [0, 255, 255],
-    // BrightWhite
-    [255, 255, 255],
-    // Foreground
-    [229, 229, 229],
-    // Background
-    [0, 0, 0],
-];
 impl NamedColor {
     pub fn from_index(index: u8) -> Option<Self> {
         if index < 18 {
@@ -72,8 +34,8 @@ impl NamedColor {
             None
         }
     }
-    pub fn into_color(self) -> [u8; 3] {
-        PALETTE[self as u8 as usize]
+    pub fn into_color(self, palette: &[[u8; 3]; 18]) -> [u8; 3] {
+        palette[self as u8 as usize]
     }
 }
 
@@ -112,13 +74,13 @@ pub enum Color {
     Rgb(u8, u8, u8),   // True Color（24bit）
 }
 impl Color {
-    pub fn color_to_rgba(self) -> [f32; 4] {
+    pub fn color_to_rgba(self, palette: &[[u8; 3]; 18]) -> [f32; 4] {
         let [r, g, b] = match self {
-            Color::Named(named) => named.into_color(),
+            Color::Named(named) => named.into_color(palette),
             Color::Indexed(index) => {
                 match index {
                     // ANSI 16色
-                    0..16 => PALETTE[index as usize],
+                    0..16 => palette[index as usize],
                     // 6x6x6 カラーキューブ
                     16..232 => {
                         let n = index - 16;

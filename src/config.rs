@@ -33,7 +33,9 @@ pub struct ShellConfig {
 #[serde(default)]
 pub struct ColorsConfig {
     pub primary: PrimaryColors,
+    #[serde(default = "AnsiColors::default_normal")]
     pub normal: AnsiColors,
+    #[serde(default = "AnsiColors::default_bright")]
     pub bright: AnsiColors,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -45,22 +47,23 @@ pub struct PrimaryColors {
     pub background: [u8; 3],
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AnsiColors {
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub black: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub red: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub green: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub yellow: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub blue: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub magenta: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub cyan: [u8; 3],
-    #[serde(default, deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color")]
     pub white: [u8; 3],
 }
 
@@ -147,12 +150,70 @@ impl Default for ColorsConfig {
         }
     }
 }
+impl ColorsConfig {
+    pub fn to_palette(&self) -> [[u8; 3]; 18] {
+        let ColorsConfig {
+            primary:
+                PrimaryColors {
+                    foreground,
+                    background,
+                },
+            normal:
+                AnsiColors {
+                    black,
+                    red,
+                    green,
+                    yellow,
+                    blue,
+                    magenta,
+                    cyan,
+                    white,
+                },
+            bright:
+                AnsiColors {
+                    black: bright_black,
+                    red: bright_red,
+                    green: bright_green,
+                    yellow: bright_yellow,
+                    blue: bright_blue,
+                    magenta: bright_magenta,
+                    cyan: bright_cyan,
+                    white: bright_white,
+                },
+        } = self.clone();
+        [
+            black,
+            red,
+            green,
+            yellow,
+            blue,
+            magenta,
+            cyan,
+            white,
+            bright_black,
+            bright_red,
+            bright_green,
+            bright_yellow,
+            bright_blue,
+            bright_magenta,
+            bright_cyan,
+            bright_white,
+            foreground,
+            background,
+        ]
+    }
+}
 impl Default for PrimaryColors {
     fn default() -> Self {
         Self {
             foreground: [229, 229, 229],
             background: [0, 0, 0],
         }
+    }
+}
+impl Default for AnsiColors {
+    fn default() -> Self {
+        AnsiColors::default_normal()
     }
 }
 impl AnsiColors {
@@ -208,7 +269,7 @@ impl Config {
     pub fn load() -> Option<Self> {
         let Some(path) = dirs::config_dir()
         else {
-            log::debug!("設定ディレクトリが見つかりません");
+            log::info!("設定ディレクトリが見つかりません");
             return None;
         };
         let path = path.join(APP_NAME).join("config.toml");
