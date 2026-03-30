@@ -131,7 +131,7 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     if (flags & 0x0004) != 0 {
         if rect.y < 0.5 {
             let skew = 0.2;
-            glyph_pos.x   += skew * grid.cell_size.y;
+            glyph_pos.x += skew * grid.cell_size.y;
         }
     }
 
