@@ -1,4 +1,4 @@
-use super::atlas::{GlyphAtlas, GlyphInfo};
+use super::atlas::{FontStyle, GlyphAtlas, GlyphInfo, GlyphKey};
 use crate::core::{CellFlags, Terminal, TerminalMode};
 
 use std::sync::Arc;
@@ -117,12 +117,14 @@ pub struct Renderer {
     cell_buffer: wgpu::Buffer,
     uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
+    palette: [[u8; 3]; 18],
 }
 impl Renderer {
     pub fn new(
         gpu: &GpuContext,
         atlas: &GlyphAtlas,
         terminal: &Terminal,
+        config: &crate::config::ColorsConfig,
     ) -> Self {
         use wgpu::util::DeviceExt as _;
         let device = &gpu.device;
@@ -325,6 +327,7 @@ impl Renderer {
             cell_buffer,
             uniform,
             uniform_buffer,
+            palette: config.to_palette(),
         }
     }
     pub fn resize(
@@ -438,10 +441,24 @@ impl Renderer {
                     uv_rect,
                     offset,
                     size,
-                } = atlas.get_or_insert(gpu, cell.c);
-                let fg = cell.fg.color_to_rgba();
-                let bg = cell.bg.color_to_rgba();
-                let flags = cell.flags.bits() as u32;
+                    style,
+                } = atlas.get_or_insert(
+                    gpu,
+                    GlyphKey {
+                        c: cell.c,
+                        style: FontStyle::from_cell_flags(cell.flags),
+                    },
+                );
+                let mut flags = cell.flags;
+                if style.is_bold() {
+                    flags.remove(CellFlags::BOLD);
+                }
+                if style.is_italic() {
+                    flags.remove(CellFlags::ITALIC);
+                }
+                let flags = flags.bits() as u32;
+                let fg = cell.fg.color_to_rgba(&self.palette);
+                let bg = cell.bg.color_to_rgba(&self.palette);
                 if size[0] <= 0.0
                     || size[1] <= 0.0
                     || cell.flags.contains(CellFlags::WIDE_CHAR_SPACER)

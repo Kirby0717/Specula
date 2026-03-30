@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod config;
 mod core;
 mod gui;
 
@@ -7,7 +8,9 @@ fn main() -> anyhow::Result<()> {
     log_init();
     setup_panic_hook();
 
-    gui::run_app()?;
+    let config = config::Config::load().unwrap_or_default();
+
+    gui::run_app(config)?;
 
     Ok(())
 }

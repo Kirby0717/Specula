@@ -101,7 +101,11 @@ impl MouseEvent {
         )
         .into_bytes()
     }
-    pub fn encode_mouse(&self, modifiers: &Modifiers, sgr_mode: bool) -> Vec<u8> {
+    pub fn encode_mouse(
+        &self,
+        modifiers: &Modifiers,
+        sgr_mode: bool,
+    ) -> Vec<u8> {
         if sgr_mode {
             self.encode_sgr(modifiers)
         }

@@ -1,21 +1,71 @@
 use super::GpuContext;
+use crate::core::CellFlags;
 
 use std::collections::HashMap;
 
+use fontdb::{Database, Family, Query, Style, Weight};
+use fontdue::Font;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct GlyphInfo {
+pub(super) struct GlyphInfo {
     pub uv_rect: [f32; 4],
     // 左上基準
     pub offset: [f32; 2],
     pub size: [f32; 2],
+    pub style: FontStyle,
 }
-pub struct GlyphAtlas {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) struct GlyphKey {
+    pub c: char,
+    pub style: FontStyle,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(super) enum FontStyle {
+    Regular,
+    Bold,
+    Italic,
+    BoldItalic,
+}
+impl FontStyle {
+    fn fallback_chain(self) -> &'static [FontStyle] {
+        match self {
+            FontStyle::Regular => &[],
+            FontStyle::Bold => &[FontStyle::Regular],
+            FontStyle::Italic => &[FontStyle::Regular],
+            FontStyle::BoldItalic => {
+                &[FontStyle::Bold, FontStyle::Italic, FontStyle::Regular]
+            }
+        }
+    }
+    pub fn from_cell_flags(flags: CellFlags) -> Self {
+        match (
+            flags.contains(CellFlags::BOLD),
+            flags.contains(CellFlags::ITALIC),
+        ) {
+            (true, true) => FontStyle::BoldItalic,
+            (true, false) => FontStyle::Bold,
+            (false, true) => FontStyle::Italic,
+            (false, false) => FontStyle::Regular,
+        }
+    }
+    pub fn is_bold(self) -> bool {
+        matches!(self, FontStyle::Bold | FontStyle::BoldItalic)
+    }
+    pub fn is_italic(self) -> bool {
+        matches!(self, FontStyle::Italic | FontStyle::BoldItalic)
+    }
+}
+#[derive(Debug)]
+pub(super) struct GlyphAtlas {
     // フォント
-    font: fontdue::Font,
+    font: Font,
+    font_bold: Option<Font>,
+    font_italic: Option<Font>,
+    font_bold_italic: Option<Font>,
     ascent: i32,
     px: f32,
     // キャッシュ
-    cache: HashMap<char, GlyphInfo>,
+    cache: HashMap<GlyphKey, GlyphInfo>,
     // テクスチャ
     texture: wgpu::Texture,
     view: wgpu::TextureView,
@@ -26,37 +76,59 @@ pub struct GlyphAtlas {
 impl GlyphAtlas {
     pub const ATLAS_SIZE: u32 = 1 << 11;
     const GLYPH_PADDING: u32 = 1;
-    pub fn new(gpu: &GpuContext, px: f32) -> Self {
+    pub fn new(gpu: &GpuContext, config: &crate::config::FontConfig) -> Self {
         // フォントの読み込み
-        let font_dir = if cfg!(debug_assertions) {
-            std::env::current_dir()
-                .expect("作業ディレクトリの取得に失敗しました")
-        }
-        else {
-            std::env::current_exe()
-                .expect("実行ファイルのパスを取得できません")
-                .parent()
-                .expect("実行ファイルのディレクトリを取得できません")
-                .to_path_buf()
-        };
-        let font_path = std::fs::read_dir(&font_dir)
-            .expect("ディレクトリの読み取りに失敗しました")
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .find(|p| p.extension().is_some_and(|ext| ext == "ttf"))
-            .unwrap_or_else(|| {
-                panic!("{} に.ttfファイルが見つかりません", font_dir.display())
-            });
-        log::info!("フォント: {}", font_path.display());
-        let font_data = std::fs::read(&font_path)
-            .expect("フォントの読み込みに失敗しました");
-        let font = fontdue::Font::from_bytes(
-            font_data,
-            fontdue::FontSettings::default(),
+        let mut db = Database::new();
+        db.load_system_fonts();
+
+        let font = load_font(
+            &db,
+            config.family.as_deref(),
+            Weight::NORMAL,
+            Style::Normal,
         )
-        .expect("フォントの解析に失敗しました");
-        let ascent =
-            font.horizontal_line_metrics(px).unwrap().ascent.ceil() as i32;
+        .expect("モノスペースフォントが見つかりません");
+        let font_name = font.name().unwrap_or_default();
+        log::info!("フォント: {font_name}");
+
+        let (f, w, s) = resolve_variant(
+            &config.bold,
+            font_name,
+            Weight::BOLD,
+            Style::Normal,
+        );
+        let font_bold = load_font(&db, Some(f), w, s);
+        if let Some(font) = &font_bold {
+            log::info!("太字フォント: {}", font.name().unwrap_or_default());
+        }
+
+        let (f, w, s) = resolve_variant(
+            &config.italic,
+            font_name,
+            Weight::NORMAL,
+            Style::Italic,
+        );
+        let font_italic = load_font(&db, Some(f), w, s);
+        if let Some(font) = &font_italic {
+            log::info!("斜体フォント: {}", font.name().unwrap_or_default());
+        }
+
+        let (f, w, s) = resolve_variant(
+            &config.bold_italic,
+            font_name,
+            Weight::BOLD,
+            Style::Italic,
+        );
+        let font_bold_italic = load_font(&db, Some(f), w, s);
+        if let Some(font) = &font_bold_italic {
+            log::info!("太字斜体フォント: {}", font.name().unwrap_or_default());
+        }
+
+        let ascent = font
+            .horizontal_line_metrics(config.size)
+            .unwrap()
+            .ascent
+            .ceil() as i32;
 
         // アトラステクスチャの作成
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -79,8 +151,11 @@ impl GlyphAtlas {
 
         GlyphAtlas {
             font,
+            font_bold,
+            font_italic,
+            font_bold_italic,
             ascent,
-            px,
+            px: config.size,
             cache: HashMap::default(),
             texture,
             view,
@@ -94,17 +169,53 @@ impl GlyphAtlas {
     pub fn cell_size(&self) -> [u32; 2] {
         let lm = self.font.horizontal_line_metrics(self.px).unwrap();
         let h = (lm.ascent - lm.descent).ceil() as u32;
-        let (m, _) = self.font.rasterize('M', self.px);
+        let (m, _) = self.font.rasterize(' ', self.px);
         let w = m.advance_width.ceil() as u32;
         [w, h]
     }
-    pub fn get_or_insert(&mut self, gpu: &GpuContext, c: char) -> GlyphInfo {
-        if let Some(index) = self.cache.get(&c) {
-            return *index;
+    fn font_for_style(&self, style: FontStyle) -> Option<&Font> {
+        match style {
+            FontStyle::Regular => Some(&self.font),
+            FontStyle::Bold => self.font_bold.as_ref(),
+            FontStyle::Italic => self.font_italic.as_ref(),
+            FontStyle::BoldItalic => self.font_bold_italic.as_ref(),
+        }
+    }
+    fn resolve_font(&self, style: FontStyle) -> (&Font, FontStyle) {
+        if let Some(font) = self.font_for_style(style) {
+            return (font, style);
+        }
+        for &fallback in style.fallback_chain() {
+            if let Some(font) = self.font_for_style(fallback) {
+                return (font, fallback);
+            }
+        }
+        (&self.font, FontStyle::Regular)
+    }
+    pub fn get_or_insert(
+        &mut self,
+        gpu: &GpuContext,
+        key: GlyphKey,
+    ) -> GlyphInfo {
+        if let Some(&info) = self.cache.get(&key) {
+            return info;
+        }
+
+        // 実際に使うフォントの決定
+        let (font, resolved_style) = self.resolve_font(key.style);
+
+        // すでにあるならそれを返す
+        if let Some(&info) = self.cache.get(&GlyphKey {
+            c: key.c,
+            style: resolved_style,
+        }) {
+            self.cache.insert(key, info);
+            return info;
         }
 
         // フォントのラスタライズ
-        let (metrics, bitmap) = self.font.rasterize(c, self.px);
+        let (metrics, bitmap) = font.rasterize(key.c, self.px);
+
         let width = metrics.width as u32;
         let height = metrics.height as u32;
 
@@ -113,8 +224,9 @@ impl GlyphAtlas {
                 uv_rect: [0.0, 0.0, 0.0, 0.0],
                 offset: [0.0, 0.0],
                 size: [0.0, 0.0],
+                style: key.style,
             };
-            self.cache.insert(c, info);
+            self.cache.insert(key, info);
             return info;
         }
 
@@ -176,9 +288,60 @@ impl GlyphAtlas {
                 (self.ascent - metrics.ymin - height as i32) as f32,
             ],
             size: [widthf, heightf],
+            style: resolved_style,
         };
 
-        self.cache.insert(c, info);
+        self.cache.insert(key, info);
         info
     }
+}
+
+fn resolve_variant<'a>(
+    variant: &'a Option<crate::config::FontStyleConfig>,
+    default_family: &'a str,
+    default_weight: Weight,
+    default_style: Style,
+) -> (&'a str, Weight, Style) {
+    match variant.as_ref() {
+        Some(c) => c.resolve(default_family, default_weight, default_style),
+        None => (default_family, default_weight, default_style),
+    }
+}
+fn load_font(
+    db: &Database,
+    family: Option<&str>,
+    weight: Weight,
+    style: Style,
+) -> Option<Font> {
+    let mut families = vec![];
+    if let Some(name) = family {
+        families.push(Family::Name(name));
+    }
+    families.extend([
+        Family::Name("DejaVu Sans Mono"),
+        Family::Name("Liberation Mono"),
+        Family::Name("Noto Sans Mono"),
+        Family::Monospace,
+    ]);
+
+    let query = Query {
+        families: &families,
+        weight,
+        style,
+        ..Default::default()
+    };
+    let id = db.query(&query)?;
+    let face = db.face(id).unwrap();
+    // 太さ・スタイルが違うならNone
+    if 100 < face.weight.0.abs_diff(weight.0) || face.style != style {
+        return None;
+    }
+    db.with_face_data(id, |data, face_index| {
+        let settings = fontdue::FontSettings {
+            collection_index: face_index,
+            ..Default::default()
+        };
+        fontdue::Font::from_bytes(data, settings)
+            .expect("フォントのロードに失敗")
+    })
 }
