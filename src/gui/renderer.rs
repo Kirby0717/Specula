@@ -434,6 +434,33 @@ impl Renderer {
         let grid = terminal.active_grid();
         let rows = grid.grid_rows();
         let cols = grid.grid_cols();
+
+        // グリフの確保
+        'retry: for attempt in 0..2 {
+            for y in 0..rows {
+                let row = grid.viewport_row(y);
+                for cell in row.iter().take(cols) {
+                    let key = GlyphKey {
+                        c: cell.c,
+                        style: FontStyle::from_cell_flags(cell.flags),
+                    };
+                    if atlas.get_or_insert(gpu, key).is_none() {
+                        if attempt == 0 {
+                            log::warn!(
+                                "グリフを入れるためアトラスを再構築します"
+                            );
+                            atlas.clear(gpu);
+                            continue 'retry;
+                        }
+                        panic!(
+                            "画面を描画するのに必要なグリフをアトラスに入れることに失敗しました"
+                        );
+                    }
+                }
+            }
+            break;
+        }
+
         for y in 0..rows {
             let row = grid.viewport_row(y);
             for (x, cell) in row.iter().take(cols).enumerate() {
@@ -442,13 +469,15 @@ impl Renderer {
                     offset,
                     size,
                     style,
-                } = atlas.get_or_insert(
-                    gpu,
-                    GlyphKey {
-                        c: cell.c,
-                        style: FontStyle::from_cell_flags(cell.flags),
-                    },
-                );
+                } = atlas
+                    .get_or_insert(
+                        gpu,
+                        GlyphKey {
+                            c: cell.c,
+                            style: FontStyle::from_cell_flags(cell.flags),
+                        },
+                    )
+                    .expect("事前に確保済み");
                 let mut flags = cell.flags;
                 if style.is_bold() {
                     flags.remove(CellFlags::BOLD);

@@ -166,6 +166,27 @@ impl GlyphAtlas {
     pub fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
+    pub fn clear(&mut self, gpu: &GpuContext) {
+        self.cache.clear();
+        self.cursor = [Self::GLYPH_PADDING, Self::GLYPH_PADDING];
+        self.row_height = 0;
+        let mut encoder =
+            gpu.device.create_command_encoder(&Default::default());
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("アトラスクリア"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+                depth_slice: None,
+            })],
+            ..Default::default()
+        });
+        gpu.queue.submit(std::iter::once(encoder.finish()));
+    }
     pub fn cell_size(&self) -> [u32; 2] {
         let lm = self.font.horizontal_line_metrics(self.px).unwrap();
         let h = (lm.ascent - lm.descent).ceil() as u32;
@@ -196,9 +217,9 @@ impl GlyphAtlas {
         &mut self,
         gpu: &GpuContext,
         key: GlyphKey,
-    ) -> GlyphInfo {
+    ) -> Option<GlyphInfo> {
         if let Some(&info) = self.cache.get(&key) {
-            return info;
+            return Some(info);
         }
 
         // 実際に使うフォントの決定
@@ -210,7 +231,7 @@ impl GlyphAtlas {
             style: resolved_style,
         }) {
             self.cache.insert(key, info);
-            return info;
+            return Some(info);
         }
 
         // フォントのラスタライズ
@@ -227,7 +248,7 @@ impl GlyphAtlas {
                 style: key.style,
             };
             self.cache.insert(key, info);
-            return info;
+            return Some(info);
         }
 
         // 改行
@@ -241,7 +262,8 @@ impl GlyphAtlas {
         if Self::ATLAS_SIZE < x + width + Self::GLYPH_PADDING
             || Self::ATLAS_SIZE < y + height + Self::GLYPH_PADDING
         {
-            panic!("グリフアトラスが満杯です");
+            log::warn!("グリフがアトラスに入りませんでした");
+            return None;
         }
 
         // アトラスへ書き込み
@@ -292,7 +314,7 @@ impl GlyphAtlas {
         };
 
         self.cache.insert(key, info);
-        info
+        Some(info)
     }
 }
 
