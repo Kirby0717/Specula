@@ -1,6 +1,6 @@
 use super::{
-    cell::{Cell, Color, Point},
-    grid::{CursorState, Grid},
+    cell::{Cell, Color},
+    grid::Grid,
 };
 
 use std::{
