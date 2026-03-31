@@ -1,5 +1,7 @@
 use super::atlas::{FontStyle, GlyphAtlas, GlyphInfo, GlyphKey};
-use crate::core::{CellFlags, Terminal, TerminalMode};
+use crate::core::{
+    CellFlags, Terminal, TerminalMode, rgb_to_rgba, rgb_to_rgba_f32,
+};
 
 use std::sync::Arc;
 
@@ -67,8 +69,8 @@ impl GpuContext {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GpuCell {
     cell_pos: [u32; 2],
-    fg: [f32; 4],
-    bg: [f32; 4],
+    fg: [u8; 4],
+    bg: [u8; 4],
     uv_rect: [f32; 4],
     offset: [f32; 2],
     size: [f32; 2],
@@ -78,8 +80,8 @@ pub struct GpuCell {
 impl GpuCell {
     const ATTRIBS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
         0 => Uint32x2,
-        1 => Float32x4,
-        2 => Float32x4,
+        1 => Unorm8x4,
+        2 => Unorm8x4,
         3 => Float32x4,
         4 => Float32x2,
         5 => Float32x2,
@@ -120,7 +122,6 @@ pub struct Renderer {
     cell_buffer: wgpu::Buffer,
     uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
-    cursor_colors: [[u8; 3]; 2],
     ime_colors: [[u8; 3]; 2],
     palette: [[u8; 3]; 18],
     preedit_text: String,
@@ -155,6 +156,8 @@ impl Renderer {
         });
         let [cell_width, cell_height] = atlas.cell_size();
         let cursor_colors = config.to_cursor_colors();
+        let ime_colors = config.to_ime_colors();
+        let palette = config.to_palette();
         let uniform = GridUniform {
             cell_size: [cell_width as f32, cell_height as f32],
             grid_size: [grid.grid_cols() as u32, grid.grid_rows() as u32],
@@ -166,8 +169,8 @@ impl Renderer {
                 let point = grid.cursor().point;
                 [point.col as u32, point.row as u32]
             },
-            cursor_fg: convert_color(cursor_colors[0]),
-            cursor_bg: convert_color(cursor_colors[1]),
+            cursor_fg: rgb_to_rgba_f32(cursor_colors[0]),
+            cursor_bg: rgb_to_rgba_f32(cursor_colors[1]),
             cursor_style: terminal.cursor_style() as u32,
             _padding1: Default::default(),
             viewport_size: {
@@ -340,9 +343,8 @@ impl Renderer {
             cell_buffer,
             uniform,
             uniform_buffer,
-            cursor_colors: config.to_cursor_colors(),
-            ime_colors: config.to_ime_colors(),
-            palette: config.to_palette(),
+            ime_colors,
+            palette,
             preedit_text: String::new(),
             preedit_cursor: None,
         }
@@ -558,8 +560,8 @@ impl Renderer {
         let mut preedit_buffer = vec![];
         let mut empty_preedit_buffer = vec![];
         let mut ime_position = grid.cursor().point;
-        let mut ime_fg = convert_color(self.ime_colors[0]);
-        let mut ime_bg = convert_color(self.ime_colors[1]);
+        let mut ime_fg = rgb_to_rgba(self.ime_colors[0]);
+        let mut ime_bg = rgb_to_rgba(self.ime_colors[1]);
         let preedit_text = if self.preedit_text.is_empty() {
             vec![]
         }
@@ -785,7 +787,4 @@ impl Renderer {
         self.preedit_text = text;
         self.preedit_cursor = cursor;
     }
-}
-fn convert_color([r, g, b]: [u8; 3]) -> [f32; 4] {
-    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
