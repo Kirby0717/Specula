@@ -15,14 +15,17 @@ struct GridUniform {
     cell_size: vec2<f32>,
     grid_size: vec2<u32>,
     atlas_size: vec2<f32>,
-    cursor_pos: vec2<u32>,
+    cursor_range: vec2<u32>,
+    cursor_fg: vec4<f32>,
+    cursor_bg: vec4<f32>,
     cursor_style: u32,
     _pad1: u32,
     viewport_size: vec2<f32>,
     selection_range: vec2<u32>,
+    _pad2: vec2<u32>,
 }
 
-// カーソルや装飾などは前景と背景の色を切り替える
+// 装飾などは前景と背景の色を切り替える
 // 複数重なっている時元に戻ることで反転の中の下線が見えるようになる
 
 // 背景
@@ -66,9 +69,15 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     let flags = cell.flags;
     var fg = cell.fg;
     var bg = cell.bg;
+    let cell_index = cell.cell_pos.y * grid.grid_size.x + cell.cell_pos.x;
+
+    // カーソル
+    let local_pos = cell.pos.xy - vec2<f32>(cell.cell_pos) * grid.cell_size;
+    if grid.cursor_range.x <= cell_index && cell_index < grid.cursor_range.y {
+        apply_cursor(&fg, &bg, local_pos);
+    }
 
     // 選択
-    let cell_index = cell.cell_pos.y * grid.grid_size.x + cell.cell_pos.x;
     let selection_range = grid.selection_range;
     if selection_range.x <= cell_index && cell_index < selection_range.y {
         let tem = fg;
@@ -85,7 +94,7 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     // 下線
     if (flags & 0x0008) != 0 {
         let local_pos = cell.pos.xy % grid.cell_size;
-        if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
+        if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y + 0.5 {
             let tem = fg;
             fg = bg;
             bg = tem;
@@ -95,17 +104,11 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     if (flags & 0x0080) != 0 {
         let local_pos = cell.pos.xy % grid.cell_size;
         let center = grid.cell_size.y / 2.0;
-        if center - 1.5 < local_pos.y && local_pos.y < center + 1.5 {
+        if center - 1.5 < local_pos.y && local_pos.y < center + 2.5 {
             let tem = fg;
             fg = bg;
             bg = tem;
         }
-    }
-
-    // カーソル
-    let local_pos = cell.pos.xy % grid.cell_size;
-    if all(cell.cell_pos == grid.cursor_pos) {
-        apply_cursor(&fg, &bg, local_pos);
     }
 
     return bg;
@@ -135,7 +138,8 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
         }
     }
 
-    let origin = vec2<f32>(cell.cell_pos) * grid.cell_size + cell.offset;
+    let cell_pos = cell.cell_pos;
+    let origin = vec2<f32>(cell_pos) * grid.cell_size + cell.offset;
     let pixel_pos = origin + glyph_pos;
     let ndc = pixel_pos / grid.viewport_size * 2.0 - 1.0;
     let pos = vec4(ndc.x, -ndc.y, 0.0, 1.0);
@@ -144,7 +148,7 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     var fg = cell.fg;
     var bg = cell.bg;
 
-    return GlyphOut(pos, cell.cell_pos, uv, fg, bg, flags, glyph_pos);
+    return GlyphOut(pos, cell_pos, uv, fg, bg, flags, glyph_pos);
 }
 struct GlyphOut {
     @builtin(position)              pos: vec4<f32>,
@@ -160,9 +164,15 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
     let flags = glyph.flags;
     var fg = glyph.fg;
     var bg = glyph.bg;
+    let cell_index = glyph.cell_pos.y * grid.grid_size.x + glyph.cell_pos.x;
+
+    // カーソル
+    let local_pos = glyph.pos.xy - vec2<f32>(glyph.cell_pos) * grid.cell_size;
+    if grid.cursor_range.x <= cell_index && cell_index < grid.cursor_range.y {
+        apply_cursor(&fg, &bg, local_pos);
+    }
 
     // 選択
-    let cell_index = glyph.cell_pos.y * grid.grid_size.x + glyph.cell_pos.x;
     let selection_range = grid.selection_range;
     if selection_range.x <= cell_index && cell_index < selection_range.y {
         let tem = fg;
@@ -181,12 +191,6 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 
-    // カーソル
-    let local_pos = glyph.pos.xy % grid.cell_size;
-    if all(glyph.cell_pos == grid.cursor_pos) {
-        apply_cursor(&fg, &bg, local_pos);
-    }
-
     // 斜体
     if (flags & 0x0004) != 0 {
         let alpha = textureSample(atlas, s, glyph.uv).r;
@@ -203,22 +207,19 @@ fn apply_cursor(fg: ptr<function, vec4<f32>>, bg: ptr<function, vec4<f32>>, loca
     switch cursor_style {
         case 0: {}
         case 1, 4: {
-            let tmp = *fg;
-            *fg = *bg;
-            *bg = tmp;
+            *fg = grid.cursor_fg;
+            *bg = grid.cursor_bg;
         }
         case 2, 5: {
-            if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y - 0.5 {
-                let tmp = *fg;
-                *fg = *bg;
-                *bg = tmp;
+            if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y + 0.5 {
+                *fg = grid.cursor_fg;
+                *bg = grid.cursor_bg;
             }
         }
         case 3, 6: {
-            if local_pos.x < 1.5 {
-                let tmp = *fg;
-                *fg = *bg;
-                *bg = tmp;
+            if local_pos.x < 2.5 {
+                *fg = grid.cursor_fg;
+                *bg = grid.cursor_bg;
             }
         }
         default: {}
