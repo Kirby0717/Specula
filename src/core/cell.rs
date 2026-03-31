@@ -74,8 +74,8 @@ pub enum Color {
     Rgb(u8, u8, u8),   // True Color（24bit）
 }
 impl Color {
-    pub fn color_to_rgba(self, palette: &[[u8; 3]; 18]) -> [f32; 4] {
-        let [r, g, b] = match self {
+    pub fn color_to_rgba(self, palette: &[[u8; 3]; 18]) -> [u8; 4] {
+        let rgb = match self {
             Color::Named(named) => named.into_color(palette),
             Color::Indexed(index) => {
                 match index {
@@ -102,8 +102,17 @@ impl Color {
             }
             Color::Rgb(r, g, b) => [r, g, b],
         };
-        [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+        rgb_to_rgba(rgb)
     }
+}
+#[inline(always)]
+pub fn rgb_to_rgba(rgb: [u8; 3]) -> [u8; 4] {
+    let [r, g, b] = rgb;
+    [r, g, b, 255]
+}
+pub fn rgb_to_rgba_f32(rgb: [u8; 3]) -> [f32; 4] {
+    let [r, g, b] = rgb;
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
