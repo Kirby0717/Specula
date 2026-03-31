@@ -32,9 +32,12 @@ pub struct ShellConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ColorsConfig {
-    pub cursor: CursorColors,
-    pub ime: ImeColors,
-    pub primary: PrimaryColors,
+    #[serde(default = "ColorPair::default_cursor")]
+    pub cursor: ColorPair,
+    #[serde(default = "ColorPair::default_ime")]
+    pub ime: ColorPair,
+    #[serde(default = "ColorPair::default_primary")]
+    pub primary: ColorPair,
     #[serde(default = "AnsiColors::default_normal")]
     pub normal: AnsiColors,
     #[serde(default = "AnsiColors::default_bright")]
@@ -42,23 +45,7 @@ pub struct ColorsConfig {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
-pub struct CursorColors {
-    #[serde(deserialize_with = "deserialize_hex_color")]
-    pub foreground: [u8; 3],
-    #[serde(deserialize_with = "deserialize_hex_color")]
-    pub background: [u8; 3],
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ImeColors {
-    #[serde(deserialize_with = "deserialize_hex_color")]
-    pub foreground: [u8; 3],
-    #[serde(deserialize_with = "deserialize_hex_color")]
-    pub background: [u8; 3],
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default)]
-pub struct PrimaryColors {
+pub struct ColorPair {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub foreground: [u8; 3],
     #[serde(deserialize_with = "deserialize_hex_color")]
@@ -162,27 +149,11 @@ impl Default for ShellConfig {
 impl Default for ColorsConfig {
     fn default() -> Self {
         Self {
-            cursor: CursorColors::default(),
-            ime: ImeColors::default(),
-            primary: PrimaryColors::default(),
+            cursor: ColorPair::default_cursor(),
+            ime: ColorPair::default_ime(),
+            primary: ColorPair::default_primary(),
             normal: AnsiColors::default_normal(),
             bright: AnsiColors::default_bright(),
-        }
-    }
-}
-impl Default for CursorColors {
-    fn default() -> Self {
-        CursorColors {
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
-        }
-    }
-}
-impl Default for ImeColors {
-    fn default() -> Self {
-        ImeColors {
-            foreground: [255, 255, 255],
-            background: [0, 0, 0],
         }
     }
 }
@@ -216,11 +187,31 @@ impl ColorsConfig {
         ]
     }
 }
-impl Default for PrimaryColors {
+impl Default for ColorPair {
     fn default() -> Self {
-        Self {
-            foreground: [229, 229, 229],
-            background: [0, 0, 0],
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+}
+impl ColorPair {
+    fn default_cursor() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+    fn default_ime() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+    fn default_primary() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
         }
     }
 }

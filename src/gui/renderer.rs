@@ -549,9 +549,9 @@ impl Renderer {
         let mut preedit_buffer = vec![];
         let mut empty_preedit_buffer = vec![];
         let mut ime_position = grid.cursor().point;
-        let convert_color = |[r, g, b]: [u8; 3]| -> [f32; 4] {
+        fn convert_color([r, g, b]: [u8; 3]) -> [f32; 4] {
             [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
-        };
+        }
         let ime_fg = convert_color(self.ime_colors[0]);
         let ime_bg = convert_color(self.ime_colors[1]);
         for c in self.preedit_text.chars() {
@@ -561,6 +561,9 @@ impl Renderer {
                 0 => continue,
                 1 | 2 => {
                     if cols < ime_position.col + width {
+                        if ime_position.row == rows - 1 {
+                            break;
+                        }
                         ime_position.row += 1;
                         ime_position.col = 0;
                     }
@@ -633,7 +636,7 @@ impl Renderer {
             {
                 log::warn!("IMEプレビューの文字数が上限を超えました");
                 preedit_buffer.pop();
-                if c.width().unwrap() == 2 {
+                if width == 2 {
                     empty_preedit_buffer.pop();
                 }
                 break;
@@ -723,20 +726,22 @@ impl Renderer {
         surface_texture.present();
 
         // IMEの範囲設定
-        let ime_start_position = grid.cursor().point;
-        let ime_end_position = ime_position;
-        let [cell_w, cell_h] = atlas.cell_size();
-        let x = ime_start_position.col as u32 * cell_w;
-        let y = ime_start_position.row as u32 * cell_h;
-        window.set_ime_cursor_area(
-            winit::dpi::PhysicalPosition::new(x, y),
-            winit::dpi::PhysicalSize::new(
-                cell_w,
-                cell_h
-                    * (ime_end_position.row - ime_start_position.row + 1)
-                        as u32,
-            ),
-        );
+        if preedit_size != 0 {
+            let ime_start_position = grid.cursor().point;
+            let ime_end_position = ime_position;
+            let [cell_w, cell_h] = atlas.cell_size();
+            let x = ime_start_position.col as u32 * cell_w;
+            let y = ime_start_position.row as u32 * cell_h;
+            window.set_ime_cursor_area(
+                winit::dpi::PhysicalPosition::new(x, y),
+                winit::dpi::PhysicalSize::new(
+                    cell_w,
+                    cell_h
+                        * (ime_end_position.row - ime_start_position.row + 1)
+                            as u32,
+                ),
+            );
+        }
     }
     pub fn set_preedit(
         &mut self,

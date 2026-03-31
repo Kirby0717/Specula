@@ -41,6 +41,7 @@ pub(super) fn handle_ime(app: &mut App, ime: Ime) {
         }
         Ime::Preedit(text, cursor) => {
             app.renderer.set_preedit(text, cursor);
+            app.terminal.active_grid_mut().scroll_to_bottom();
             app.window.request_redraw();
         }
         _ => {}
