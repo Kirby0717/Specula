@@ -117,6 +117,8 @@ pub struct Renderer {
     cell_buffer: wgpu::Buffer,
     uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
+    cursor_colors: [[u8; 3]; 2],
+    ime_colors: [[u8; 3]; 2],
     palette: [[u8; 3]; 18],
     preedit_text: String,
 }
@@ -330,6 +332,8 @@ impl Renderer {
             cell_buffer,
             uniform,
             uniform_buffer,
+            cursor_colors: config.to_cursor_colors(),
+            ime_colors: config.to_ime_colors(),
             palette: config.to_palette(),
             preedit_text: String::new(),
         }
@@ -517,9 +521,9 @@ impl Renderer {
                         cell_pos: [x as u32, y as u32],
                         fg,
                         bg,
-                        uv_rect,
-                        offset,
-                        size,
+                        uv_rect: [0.0, 0.0, 0.0, 0.0],
+                        offset: [0.0, 0.0],
+                        size: [0.0, 0.0],
                         flags,
                         _padding1: Default::default(),
                     });
@@ -545,13 +549,18 @@ impl Renderer {
         let mut preedit_buffer = vec![];
         let mut empty_preedit_buffer = vec![];
         let mut ime_position = grid.cursor().point;
+        let convert_color = |[r, g, b]: [u8; 3]| -> [f32; 4] {
+            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+        };
+        let ime_fg = convert_color(self.ime_colors[0]);
+        let ime_bg = convert_color(self.ime_colors[1]);
         for c in self.preedit_text.chars() {
             use unicode_width::UnicodeWidthChar;
             let width = c.width().unwrap_or(0);
             match width {
                 0 => continue,
                 1 | 2 => {
-                    if cols <= ime_position.col + width {
+                    if cols < ime_position.col + width {
                         ime_position.row += 1;
                         ime_position.col = 0;
                     }
@@ -569,8 +578,6 @@ impl Renderer {
                             },
                         )
                         .expect("事前に確保済み");
-                    let fg = [1.0, 1.0, 1.0, 1.0];
-                    let bg = [0.0, 0.0, 0.0, 1.0];
                     let flags = CellFlags::UNDERLINE.bits() as u32;
                     if size[0] <= 0.0 || size[1] <= 0.0 {
                         empty_preedit_buffer.push(GpuCell {
@@ -578,8 +585,8 @@ impl Renderer {
                                 ime_position.col as u32,
                                 ime_position.row as u32,
                             ],
-                            fg,
-                            bg,
+                            fg: ime_fg,
+                            bg: ime_bg,
                             uv_rect: [0.0, 0.0, 0.0, 0.0],
                             offset: [0.0, 0.0],
                             size: [0.0, 0.0],
@@ -593,8 +600,8 @@ impl Renderer {
                                 ime_position.col as u32,
                                 ime_position.row as u32,
                             ],
-                            fg,
-                            bg,
+                            fg: ime_fg,
+                            bg: ime_bg,
                             uv_rect,
                             offset,
                             size,
@@ -608,8 +615,8 @@ impl Renderer {
                                 ime_position.col as u32 + 1,
                                 ime_position.row as u32,
                             ],
-                            fg,
-                            bg,
+                            fg: ime_fg,
+                            bg: ime_bg,
                             uv_rect: [0.0, 0.0, 0.0, 0.0],
                             offset: [0.0, 0.0],
                             size: [0.0, 0.0],
