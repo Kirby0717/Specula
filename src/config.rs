@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub log_level: log::LevelFilter,
     pub font: FontConfig,
     pub shell: ShellConfig,
     pub colors: ColorsConfig,
@@ -130,6 +131,7 @@ fn parse_style(s: &str) -> fontdb::Style {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            log_level: log::LevelFilter::Warn,
             font: FontConfig::default(),
             shell: ShellConfig::default(),
             colors: ColorsConfig::default(),
