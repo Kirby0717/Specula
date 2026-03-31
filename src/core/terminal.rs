@@ -465,6 +465,104 @@ impl vte::Perform for TerminalCore {
             ),
         }
     }
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        let Some(code) =
+            params.first().and_then(|p| std::str::from_utf8(p).ok())
+        else {
+            return;
+        };
+        match code {
+            "0" | "1" | "2" => {
+                if let Some(title) =
+                    params.get(1).and_then(|p| std::str::from_utf8(p).ok())
+                {
+                    log::info!("未対応 OSC {code}: title={title}",);
+                }
+            }
+            "4" => {
+                log::info!("未対応 OSC 4: カラーパレット 問い合わせ/設定");
+            }
+            "7" => {
+                if let Some(uri) =
+                    params.get(1).and_then(|p| std::str::from_utf8(p).ok())
+                {
+                    log::info!("未対応 OSC 7: cwd={uri}");
+                }
+            }
+            "8" => {
+                if let Some(url) =
+                    params.get(1).and_then(|p| std::str::from_utf8(p).ok())
+                {
+                    log::info!("未対応 OSC 8: ハイパーリンク={url}");
+                }
+            }
+            "9" => {
+                if params.get(1) == Some(&b"9".as_slice()) {
+                    if let Some(path) =
+                        params.get(2).and_then(|p| std::str::from_utf8(p).ok())
+                    {
+                        log::info!("未対応 OSC 9;9: cwd={path}");
+                    }
+                }
+                else {
+                    log::info!("未対応 OSC 9: デスクトップ通知");
+                }
+            }
+            "52" => {
+                log::info!("未対応 OSC 52: クリップボード操作");
+            }
+            "10" | "11" | "12" | "13" | "14" | "17" | "19" => {
+                log::info!("未対応 OSC {code}: 色設定",);
+            }
+            "110" | "111" | "112" | "113" | "114" | "117" | "119" => {
+                log::info!("未対応 OSC {code}: 色リセット",);
+            }
+            "133" => {
+                let Some(marker) = params.get(1).copied()
+                else {
+                    return;
+                };
+                match marker {
+                    b"A" | [b'A', b';', ..] => {
+                        log::info!("未対応 OSC 133: プロンプト開始",);
+                        /*let row = self.active_grid().cursor().point.row;
+                        self.active_grid_mut().mark_prompt(row);*/
+                    }
+                    b"B" => {
+                        log::info!("未対応 OSC 133: プロンプト終了",);
+                    }
+                    b"C" => {
+                        log::info!("未対応 OSC 133: コマンド実行開始",);
+                    }
+                    [b'D', ..] => {
+                        log::info!("未対応 OSC 133: コマンド出力終了",);
+                    }
+                    _ => {
+                        log::info!("未対応 OSC 133: マーカー={marker:?}",);
+                    }
+                }
+            }
+            _ => log::warn!(
+                "未対応 OSC: code={code:?}, params_count={}, bell={bell_terminated}",
+                params.len(),
+            ),
+        }
+    }
+    fn hook(
+        &mut self,
+        _params: &vte::Params,
+        _intermediates: &[u8],
+        _ignore: bool,
+        _action: char,
+    ) {
+        log::debug!("未対応 DCS: シーケンス開始");
+    }
+    fn put(&mut self, _byte: u8) {
+        log::debug!("未対応 DCS: シーケンスデータ");
+    }
+    fn unhook(&mut self) {
+        log::debug!("未対応 DCS: シーケンス終了");
+    }
 }
 
 pub struct Pty {
