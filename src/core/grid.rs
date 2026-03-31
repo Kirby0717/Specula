@@ -485,9 +485,6 @@ impl Grid {
         }
         (anchor, end)
     }
-    pub fn viewport_offset(&self) -> usize {
-        self.viewport_offset
-    }
     pub fn scroll(&mut self, lines: isize) {
         self.viewport_offset = self
             .viewport_offset
@@ -500,20 +497,30 @@ impl Grid {
     fn scrollback_len(&self) -> usize {
         self.buffer.len() - self.rows
     }
-    fn cell_at_cursor(&mut self) -> &mut Cell {
-        // 本来なら起こらない
-        if self.rows <= self.cursor.point.row
-            || self.cols <= self.cursor.point.col
-        {
-            log::warn!(
-                "カーソルが範囲外です カーソル: ({}, {}) 画面サイズ: {} x {}",
-                self.cursor.point.row,
-                self.cursor.point.col,
-                self.rows,
-                self.cols,
-            );
-            self.clamp_cursor();
-        }
+    pub fn cell_at_cursor(&self) -> &Cell {
+        debug_assert!(
+            self.cursor.point.row < self.rows
+                && self.cursor.point.col < self.cols,
+            "カーソルが範囲外です カーソル: ({}, {}) 画面サイズ: {} x {}",
+            self.cursor.point.row,
+            self.cursor.point.col,
+            self.rows,
+            self.cols,
+        );
+
+        let Point { row, col } = self.cursor.point;
+        &self.screen_row(row)[col]
+    }
+    fn cell_at_cursor_mut(&mut self) -> &mut Cell {
+        debug_assert!(
+            self.cursor.point.row < self.rows
+                && self.cursor.point.col < self.cols,
+            "カーソルが範囲外です カーソル: ({}, {}) 画面サイズ: {} x {}",
+            self.cursor.point.row,
+            self.cursor.point.col,
+            self.rows,
+            self.cols,
+        );
 
         let Point { row, col } = self.cursor.point;
         &mut self.screen_row_mut(row)[col]
@@ -536,7 +543,7 @@ impl Grid {
 
         // 折り返し処理
         if self.cursor.pending_wrap {
-            let cell = self.cell_at_cursor();
+            let cell = self.cell_at_cursor_mut();
             cell.flags.insert(CellFlags::WRAPLINE);
             self.linefeed();
             self.carriage_return();
@@ -546,7 +553,7 @@ impl Grid {
         if width == 2 {
             // 入らなければ改行
             if self.cols - 1 <= self.cursor.point.col {
-                let cell = self.cell_at_cursor();
+                let cell = self.cell_at_cursor_mut();
                 *cell = template;
                 cell.c = ' ';
                 self.linefeed();
@@ -554,12 +561,12 @@ impl Grid {
             }
 
             self.clear_wide_at_cursor();
-            let cell = self.cell_at_cursor();
+            let cell = self.cell_at_cursor_mut();
             *cell = template;
             cell.c = c;
             cell.flags.insert(CellFlags::WIDE_CHAR);
             self.cursor_right(1);
-            let cell = self.cell_at_cursor();
+            let cell = self.cell_at_cursor_mut();
             *cell = template;
             cell.c = ' ';
             cell.flags.insert(CellFlags::WIDE_CHAR_SPACER);
@@ -567,7 +574,7 @@ impl Grid {
         //半角
         else {
             self.clear_wide_at_cursor();
-            let cell = self.cell_at_cursor();
+            let cell = self.cell_at_cursor_mut();
             *cell = template;
             cell.c = c;
         }

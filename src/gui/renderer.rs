@@ -101,11 +101,14 @@ pub struct GridUniform {
     cell_size: [f32; 2],
     grid_size: [u32; 2],
     atlas_size: [f32; 2],
-    cursor_pos: [u32; 2],
+    cursor_range: [u32; 2],
+    cursor_fg: [f32; 4],
+    cursor_bg: [f32; 4],
     cursor_style: u32,
     _padding1: u32,
     viewport_size: [f32; 2],
     selection_range: [u32; 2],
+    _padding2: [u32; 2],
 }
 
 pub struct Renderer {
@@ -121,6 +124,7 @@ pub struct Renderer {
     ime_colors: [[u8; 3]; 2],
     palette: [[u8; 3]; 18],
     preedit_text: String,
+    preedit_cursor: Option<(usize, usize)>,
 }
 impl Renderer {
     const IME_BUFFER_CELLS: usize = 256;
@@ -150,6 +154,7 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let [cell_width, cell_height] = atlas.cell_size();
+        let cursor_colors = config.to_cursor_colors();
         let uniform = GridUniform {
             cell_size: [cell_width as f32, cell_height as f32],
             grid_size: [grid.grid_cols() as u32, grid.grid_rows() as u32],
@@ -157,10 +162,12 @@ impl Renderer {
                 GlyphAtlas::ATLAS_SIZE as f32,
                 GlyphAtlas::ATLAS_SIZE as f32,
             ],
-            cursor_pos: {
+            cursor_range: {
                 let point = grid.cursor().point;
                 [point.col as u32, point.row as u32]
             },
+            cursor_fg: convert_color(cursor_colors[0]),
+            cursor_bg: convert_color(cursor_colors[1]),
             cursor_style: terminal.cursor_style() as u32,
             _padding1: Default::default(),
             viewport_size: {
@@ -168,6 +175,7 @@ impl Renderer {
                 [window_size.width as f32, window_size.height as f32]
             },
             selection_range: [0, 0],
+            _padding2: Default::default(),
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -336,6 +344,7 @@ impl Renderer {
             ime_colors: config.to_ime_colors(),
             palette: config.to_palette(),
             preedit_text: String::new(),
+            preedit_cursor: None,
         }
     }
     pub fn resize(
@@ -549,98 +558,115 @@ impl Renderer {
         let mut preedit_buffer = vec![];
         let mut empty_preedit_buffer = vec![];
         let mut ime_position = grid.cursor().point;
-        fn convert_color([r, g, b]: [u8; 3]) -> [f32; 4] {
-            [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+        let mut ime_fg = convert_color(self.ime_colors[0]);
+        let mut ime_bg = convert_color(self.ime_colors[1]);
+        let preedit_text = if self.preedit_text.is_empty() {
+            vec![]
         }
-        let ime_fg = convert_color(self.ime_colors[0]);
-        let ime_bg = convert_color(self.ime_colors[1]);
-        for c in self.preedit_text.chars() {
-            use unicode_width::UnicodeWidthChar;
-            let width = c.width().unwrap_or(0);
-            match width {
-                0 => continue,
-                1 | 2 => {
-                    if cols < ime_position.col + width {
-                        if ime_position.row == rows - 1 {
-                            break;
+        else if let Some((begin, end)) = self.preedit_cursor {
+            vec![
+                &self.preedit_text[..begin],
+                &self.preedit_text[begin..end],
+                &self.preedit_text[end..],
+            ]
+        }
+        else {
+            vec![self.preedit_text.as_str()]
+        };
+        let mut bar_cursor = None;
+        for text in preedit_text {
+            if text.is_empty() {
+                bar_cursor = Some(ime_position);
+            }
+            for c in text.chars() {
+                use unicode_width::UnicodeWidthChar;
+                let width = c.width().unwrap_or(0);
+                match width {
+                    0 => continue,
+                    1 | 2 => {
+                        if cols < ime_position.col + width {
+                            if ime_position.row == rows - 1 {
+                                break;
+                            }
+                            ime_position.row += 1;
+                            ime_position.col = 0;
                         }
-                        ime_position.row += 1;
-                        ime_position.col = 0;
-                    }
-                    let GlyphInfo {
-                        uv_rect,
-                        offset,
-                        size,
-                        ..
-                    } = atlas
-                        .get_or_insert(
-                            gpu,
-                            GlyphKey {
-                                c,
-                                style: FontStyle::Regular,
-                            },
-                        )
-                        .expect("事前に確保済み");
-                    let flags = CellFlags::UNDERLINE.bits() as u32;
-                    if size[0] <= 0.0 || size[1] <= 0.0 {
-                        empty_preedit_buffer.push(GpuCell {
-                            cell_pos: [
-                                ime_position.col as u32,
-                                ime_position.row as u32,
-                            ],
-                            fg: ime_fg,
-                            bg: ime_bg,
-                            uv_rect: [0.0, 0.0, 0.0, 0.0],
-                            offset: [0.0, 0.0],
-                            size: [0.0, 0.0],
-                            flags,
-                            _padding1: Default::default(),
-                        });
-                    }
-                    else {
-                        preedit_buffer.push(GpuCell {
-                            cell_pos: [
-                                ime_position.col as u32,
-                                ime_position.row as u32,
-                            ],
-                            fg: ime_fg,
-                            bg: ime_bg,
+                        let GlyphInfo {
                             uv_rect,
                             offset,
                             size,
-                            flags,
-                            _padding1: Default::default(),
-                        });
+                            ..
+                        } = atlas
+                            .get_or_insert(
+                                gpu,
+                                GlyphKey {
+                                    c,
+                                    style: FontStyle::Regular,
+                                },
+                            )
+                            .expect("事前に確保済み");
+                        let flags = CellFlags::UNDERLINE.bits() as u32;
+                        if size[0] <= 0.0 || size[1] <= 0.0 {
+                            empty_preedit_buffer.push(GpuCell {
+                                cell_pos: [
+                                    ime_position.col as u32,
+                                    ime_position.row as u32,
+                                ],
+                                fg: ime_fg,
+                                bg: ime_bg,
+                                uv_rect: [0.0, 0.0, 0.0, 0.0],
+                                offset: [0.0, 0.0],
+                                size: [0.0, 0.0],
+                                flags,
+                                _padding1: Default::default(),
+                            });
+                        }
+                        else {
+                            preedit_buffer.push(GpuCell {
+                                cell_pos: [
+                                    ime_position.col as u32,
+                                    ime_position.row as u32,
+                                ],
+                                fg: ime_fg,
+                                bg: ime_bg,
+                                uv_rect,
+                                offset,
+                                size,
+                                flags,
+                                _padding1: Default::default(),
+                            });
+                        }
+                        if width == 2 {
+                            empty_preedit_buffer.push(GpuCell {
+                                cell_pos: [
+                                    ime_position.col as u32 + 1,
+                                    ime_position.row as u32,
+                                ],
+                                fg: ime_fg,
+                                bg: ime_bg,
+                                uv_rect: [0.0, 0.0, 0.0, 0.0],
+                                offset: [0.0, 0.0],
+                                size: [0.0, 0.0],
+                                flags,
+                                _padding1: Default::default(),
+                            });
+                        }
+                        ime_position.col += width;
                     }
+                    _ => unreachable!("Unicodeの幅は2以下"),
+                }
+                if Self::IME_BUFFER_CELLS
+                    < preedit_buffer.len() + empty_preedit_buffer.len()
+                {
+                    log::warn!("IMEプレビューの文字数が上限を超えました");
+                    preedit_buffer.pop();
                     if width == 2 {
-                        empty_preedit_buffer.push(GpuCell {
-                            cell_pos: [
-                                ime_position.col as u32 + 1,
-                                ime_position.row as u32,
-                            ],
-                            fg: ime_fg,
-                            bg: ime_bg,
-                            uv_rect: [0.0, 0.0, 0.0, 0.0],
-                            offset: [0.0, 0.0],
-                            size: [0.0, 0.0],
-                            flags,
-                            _padding1: Default::default(),
-                        });
+                        empty_preedit_buffer.pop();
                     }
-                    ime_position.col += width;
+                    break;
                 }
-                _ => unreachable!("Unicodeの幅は2以下"),
             }
-            if Self::IME_BUFFER_CELLS
-                < preedit_buffer.len() + empty_preedit_buffer.len()
-            {
-                log::warn!("IMEプレビューの文字数が上限を超えました");
-                preedit_buffer.pop();
-                if width == 2 {
-                    empty_preedit_buffer.pop();
-                }
-                break;
-            }
+            std::mem::swap(&mut ime_fg, &mut ime_bg);
         }
         let preedit_size =
             (preedit_buffer.len() + empty_preedit_buffer.len()) as u32;
@@ -678,30 +704,38 @@ impl Renderer {
 
         // Uniformの更新
         if preedit_size == 0 {
+            let width =
+                if grid.cell_at_cursor().flags.contains(CellFlags::WIDE_CHAR) {
+                    2
+                }
+                else {
+                    1
+                };
             let point = grid.cursor().point;
-            self.uniform.cursor_pos = [
-                point.col as u32,
-                (point.row + grid.viewport_offset()) as u32,
-            ];
+            let begin_index = (point.row * cols + point.col) as u32;
+            self.uniform.cursor_range = [begin_index, begin_index + width];
         }
         else {
-            self.uniform.cursor_pos = [cols as u32, rows as u32];
+            if let Some(point) = bar_cursor {
+                let begin_index = (point.row * cols + point.col) as u32;
+                self.uniform.cursor_range = [begin_index, begin_index + 1];
+            }
+            else {
+                self.uniform.cursor_range = [0, 0];
+            }
+        }
+        self.uniform.cursor_style = terminal.cursor_style() as u32;
+        if bar_cursor.is_some() {
+            self.uniform.cursor_style = crate::core::CursorStyle::Bar as u32;
+        }
+        if !terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
+            self.uniform.cursor_style = crate::core::CursorStyle::Hidden as u32;
         }
         self.uniform.selection_range = selection_range;
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
-            bytemuck::bytes_of(&GridUniform {
-                cursor_style: {
-                    if terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
-                        terminal.cursor_style() as u32
-                    }
-                    else {
-                        crate::core::CursorStyle::Hidden as u32
-                    }
-                },
-                ..self.uniform
-            }),
+            bytemuck::bytes_of(&self.uniform),
         );
 
         render_pass.set_bind_group(0, &self.bind_group, &[]);
@@ -746,8 +780,12 @@ impl Renderer {
     pub fn set_preedit(
         &mut self,
         text: String,
-        _cursor: Option<(usize, usize)>,
+        cursor: Option<(usize, usize)>,
     ) {
         self.preedit_text = text;
+        self.preedit_cursor = cursor;
     }
+}
+fn convert_color([r, g, b]: [u8; 3]) -> [f32; 4] {
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }

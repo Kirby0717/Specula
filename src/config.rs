@@ -204,14 +204,14 @@ impl ColorPair {
     }
     fn default_ime() -> Self {
         ColorPair {
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
+            foreground: [255, 255, 255],
+            background: [0, 0, 0],
         }
     }
     fn default_primary() -> Self {
         ColorPair {
-            foreground: [0, 0, 0],
-            background: [255, 255, 255],
+            foreground: [255, 255, 255],
+            background: [0, 0, 0],
         }
     }
 }
