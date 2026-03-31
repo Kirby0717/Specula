@@ -57,7 +57,7 @@ impl GpuContext {
             width: self.size.width.max(1),
             height: self.size.height.max(1),
             desired_maximum_frame_latency: 2,
-            present_mode: wgpu::PresentMode::AutoNoVsync,
+            present_mode: wgpu::PresentMode::AutoVsync,
         };
         self.surface.configure(&self.device, &surface_config);
     }
@@ -118,8 +118,10 @@ pub struct Renderer {
     uniform: GridUniform,
     uniform_buffer: wgpu::Buffer,
     palette: [[u8; 3]; 18],
+    preedit_text: String,
 }
 impl Renderer {
+    const IME_BUFFER_CELLS: usize = 256;
     pub fn new(
         gpu: &GpuContext,
         atlas: &GlyphAtlas,
@@ -139,8 +141,9 @@ impl Renderer {
         });
         let cell_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("CellBuffer"),
-            size: (grid.grid_rows() * grid.grid_cols() * size_of::<GpuCell>())
-                as u64,
+            size: ((grid.grid_rows() * grid.grid_cols()
+                + Self::IME_BUFFER_CELLS)
+                * size_of::<GpuCell>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -328,6 +331,7 @@ impl Renderer {
             uniform,
             uniform_buffer,
             palette: config.to_palette(),
+            preedit_text: String::new(),
         }
     }
     pub fn resize(
@@ -337,7 +341,8 @@ impl Renderer {
         rows: usize,
         cols: usize,
     ) {
-        let need_buffer_size = (rows * cols * size_of::<GpuCell>()) as u64;
+        let need_buffer_size = ((rows * cols + Self::IME_BUFFER_CELLS)
+            * size_of::<GpuCell>()) as u64;
         if self.cell_buffer.size() < need_buffer_size {
             self.cell_buffer =
                 gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -428,9 +433,6 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-        // グリッドからGpuCellへの変換
-        let mut cell_buffer = vec![];
-        let mut empty_cell_buffer = vec![];
         let grid = terminal.active_grid();
         let rows = grid.grid_rows();
         let cols = grid.grid_cols();
@@ -458,9 +460,28 @@ impl Renderer {
                     }
                 }
             }
+            for c in self.preedit_text.chars() {
+                let key = GlyphKey {
+                    c,
+                    style: FontStyle::Regular,
+                };
+                if atlas.get_or_insert(gpu, key).is_none() {
+                    if attempt == 0 {
+                        log::warn!("グリフを入れるためアトラスを再構築します");
+                        atlas.clear(gpu);
+                        continue 'retry;
+                    }
+                    panic!(
+                        "画面を描画するのに必要なグリフをアトラスに入れることに失敗しました"
+                    );
+                }
+            }
             break;
         }
 
+        // グリッドを変換
+        let mut cell_buffer = vec![];
+        let mut empty_cell_buffer = vec![];
         for y in 0..rows {
             let row = grid.viewport_row(y);
             for (x, cell) in row.iter().take(cols).enumerate() {
@@ -516,6 +537,108 @@ impl Renderer {
                 });
             }
         }
+        let grid_size = (cell_buffer.len() + empty_cell_buffer.len()) as u32;
+        let grid_bg_range = 0..grid_size;
+        let grid_fg_range = 0..cell_buffer.len() as u32;
+
+        // IMEプレビューを変換
+        let mut preedit_buffer = vec![];
+        let mut empty_preedit_buffer = vec![];
+        let mut ime_position = grid.cursor().point;
+        for c in self.preedit_text.chars() {
+            use unicode_width::UnicodeWidthChar;
+            let width = c.width().unwrap_or(0);
+            match width {
+                0 => continue,
+                1 | 2 => {
+                    if cols <= ime_position.col + width {
+                        ime_position.row += 1;
+                        ime_position.col = 0;
+                    }
+                    let GlyphInfo {
+                        uv_rect,
+                        offset,
+                        size,
+                        ..
+                    } = atlas
+                        .get_or_insert(
+                            gpu,
+                            GlyphKey {
+                                c,
+                                style: FontStyle::Regular,
+                            },
+                        )
+                        .expect("事前に確保済み");
+                    let fg = [1.0, 1.0, 1.0, 1.0];
+                    let bg = [0.0, 0.0, 0.0, 1.0];
+                    let flags = CellFlags::UNDERLINE.bits() as u32;
+                    if size[0] <= 0.0 || size[1] <= 0.0 {
+                        empty_preedit_buffer.push(GpuCell {
+                            cell_pos: [
+                                ime_position.col as u32,
+                                ime_position.row as u32,
+                            ],
+                            fg,
+                            bg,
+                            uv_rect: [0.0, 0.0, 0.0, 0.0],
+                            offset: [0.0, 0.0],
+                            size: [0.0, 0.0],
+                            flags,
+                            _padding1: Default::default(),
+                        });
+                    }
+                    else {
+                        preedit_buffer.push(GpuCell {
+                            cell_pos: [
+                                ime_position.col as u32,
+                                ime_position.row as u32,
+                            ],
+                            fg,
+                            bg,
+                            uv_rect,
+                            offset,
+                            size,
+                            flags,
+                            _padding1: Default::default(),
+                        });
+                    }
+                    if width == 2 {
+                        empty_preedit_buffer.push(GpuCell {
+                            cell_pos: [
+                                ime_position.col as u32 + 1,
+                                ime_position.row as u32,
+                            ],
+                            fg,
+                            bg,
+                            uv_rect: [0.0, 0.0, 0.0, 0.0],
+                            offset: [0.0, 0.0],
+                            size: [0.0, 0.0],
+                            flags,
+                            _padding1: Default::default(),
+                        });
+                    }
+                    ime_position.col += width;
+                }
+                _ => unreachable!("Unicodeの幅は2以下"),
+            }
+            if Self::IME_BUFFER_CELLS
+                < preedit_buffer.len() + empty_preedit_buffer.len()
+            {
+                log::warn!("IMEプレビューの文字数が上限を超えました");
+                preedit_buffer.pop();
+                if c.width().unwrap() == 2 {
+                    empty_preedit_buffer.pop();
+                }
+                break;
+            }
+        }
+        let preedit_size =
+            (preedit_buffer.len() + empty_preedit_buffer.len()) as u32;
+        let preedit_bg_range = grid_size..grid_size + preedit_size;
+        let preedit_fg_range =
+            grid_size..grid_size + preedit_buffer.len() as u32;
+
+        // バッファーを送信
         gpu.queue.write_buffer(
             &self.cell_buffer,
             0,
@@ -523,16 +646,37 @@ impl Renderer {
         );
         gpu.queue.write_buffer(
             &self.cell_buffer,
-            (size_of::<GpuCell>() * cell_buffer.len()) as u64,
+            (cell_buffer.len() * size_of::<GpuCell>()) as u64,
             bytemuck::cast_slice(&empty_cell_buffer),
         );
+        if preedit_size != 0 {
+            gpu.queue.write_buffer(
+                &self.cell_buffer,
+                ((cell_buffer.len() + empty_cell_buffer.len())
+                    * size_of::<GpuCell>()) as u64,
+                bytemuck::cast_slice(&preedit_buffer),
+            );
+            gpu.queue.write_buffer(
+                &self.cell_buffer,
+                ((cell_buffer.len()
+                    + empty_cell_buffer.len()
+                    + preedit_buffer.len())
+                    * size_of::<GpuCell>()) as u64,
+                bytemuck::cast_slice(&empty_preedit_buffer),
+            );
+        }
 
         // Uniformの更新
-        let point = grid.cursor().point;
-        self.uniform.cursor_pos = [
-            point.col as u32,
-            (point.row + grid.viewport_offset()) as u32,
-        ];
+        if preedit_size == 0 {
+            let point = grid.cursor().point;
+            self.uniform.cursor_pos = [
+                point.col as u32,
+                (point.row + grid.viewport_offset()) as u32,
+            ];
+        }
+        else {
+            self.uniform.cursor_pos = [cols as u32, rows as u32];
+        }
         self.uniform.selection_range = selection_range;
         gpu.queue.write_buffer(
             &self.uniform_buffer,
@@ -550,22 +694,48 @@ impl Renderer {
             }),
         );
 
-        // グリッドの描画
-        render_pass.set_pipeline(&self.cell_render_pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.cell_buffer.slice(..));
-        render_pass.draw(
-            0..6,
-            0..(cell_buffer.len() + empty_cell_buffer.len()) as u32,
-        );
-        // 文字の描画
+        // グリッドの描画
+        render_pass.set_pipeline(&self.cell_render_pipeline);
+        render_pass.draw(0..6, grid_bg_range);
         render_pass.set_pipeline(&self.glyph_render_pipeline);
-        render_pass.draw(0..6, 0..cell_buffer.len() as u32);
+        render_pass.draw(0..6, grid_fg_range);
+        // IMEプレビューの描画
+        if preedit_size != 0 {
+            render_pass.set_pipeline(&self.cell_render_pipeline);
+            render_pass.draw(0..6, preedit_bg_range);
+            render_pass.set_pipeline(&self.glyph_render_pipeline);
+            render_pass.draw(0..6, preedit_fg_range);
+        }
 
         drop(render_pass);
 
         gpu.queue.submit([encoder.finish()]);
         window.pre_present_notify();
         surface_texture.present();
+
+        // IMEの範囲設定
+        let ime_start_position = grid.cursor().point;
+        let ime_end_position = ime_position;
+        let [cell_w, cell_h] = atlas.cell_size();
+        let x = ime_start_position.col as u32 * cell_w;
+        let y = ime_start_position.row as u32 * cell_h;
+        window.set_ime_cursor_area(
+            winit::dpi::PhysicalPosition::new(x, y),
+            winit::dpi::PhysicalSize::new(
+                cell_w,
+                cell_h
+                    * (ime_end_position.row - ime_start_position.row + 1)
+                        as u32,
+            ),
+        );
+    }
+    pub fn set_preedit(
+        &mut self,
+        text: String,
+        _cursor: Option<(usize, usize)>,
+    ) {
+        self.preedit_text = text;
     }
 }

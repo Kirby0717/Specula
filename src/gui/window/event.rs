@@ -12,6 +12,7 @@ use winit::{
 use std::time::Instant;
 
 pub(super) fn handle_redraw(app: &mut App) {
+    // 選択範囲の計算
     let grid = app.terminal.active_grid();
     let grid_rows = grid.grid_rows() as isize;
     let grid_cols = grid.grid_cols() as isize;
@@ -38,8 +39,9 @@ pub(super) fn handle_ime(app: &mut App, ime: Ime) {
         Ime::Commit(text) => {
             app.terminal.write(text.as_bytes());
         }
-        Ime::Preedit(_text, _cursor) => {
-            // TODO: プレビュー表示
+        Ime::Preedit(text, cursor) => {
+            app.renderer.set_preedit(text, cursor);
+            app.window.request_redraw();
         }
         _ => {}
     }

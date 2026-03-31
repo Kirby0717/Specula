@@ -267,7 +267,6 @@ impl GlyphAtlas {
         }
 
         // アトラスへ書き込み
-        // TODO: 上書き時の前のデータの消去
         gpu.queue.write_texture(
             wgpu::TexelCopyTextureInfoBase {
                 texture: &self.texture,
