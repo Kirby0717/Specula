@@ -32,7 +32,12 @@ pub struct ShellConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ColorsConfig {
-    pub primary: PrimaryColors,
+    #[serde(default = "ColorPair::default_cursor")]
+    pub cursor: ColorPair,
+    #[serde(default = "ColorPair::default_ime")]
+    pub ime: ColorPair,
+    #[serde(default = "ColorPair::default_primary")]
+    pub primary: ColorPair,
     #[serde(default = "AnsiColors::default_normal")]
     pub normal: AnsiColors,
     #[serde(default = "AnsiColors::default_bright")]
@@ -40,7 +45,7 @@ pub struct ColorsConfig {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
-pub struct PrimaryColors {
+pub struct ColorPair {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub foreground: [u8; 3],
     #[serde(deserialize_with = "deserialize_hex_color")]
@@ -144,70 +149,69 @@ impl Default for ShellConfig {
 impl Default for ColorsConfig {
     fn default() -> Self {
         Self {
-            primary: PrimaryColors::default(),
+            cursor: ColorPair::default_cursor(),
+            ime: ColorPair::default_ime(),
+            primary: ColorPair::default_primary(),
             normal: AnsiColors::default_normal(),
             bright: AnsiColors::default_bright(),
         }
     }
 }
 impl ColorsConfig {
+    pub fn to_cursor_colors(&self) -> [[u8; 3]; 2] {
+        [self.cursor.foreground, self.cursor.background]
+    }
+    pub fn to_ime_colors(&self) -> [[u8; 3]; 2] {
+        [self.ime.foreground, self.ime.background]
+    }
     pub fn to_palette(&self) -> [[u8; 3]; 18] {
-        let ColorsConfig {
-            primary:
-                PrimaryColors {
-                    foreground,
-                    background,
-                },
-            normal:
-                AnsiColors {
-                    black,
-                    red,
-                    green,
-                    yellow,
-                    blue,
-                    magenta,
-                    cyan,
-                    white,
-                },
-            bright:
-                AnsiColors {
-                    black: bright_black,
-                    red: bright_red,
-                    green: bright_green,
-                    yellow: bright_yellow,
-                    blue: bright_blue,
-                    magenta: bright_magenta,
-                    cyan: bright_cyan,
-                    white: bright_white,
-                },
-        } = self.clone();
         [
-            black,
-            red,
-            green,
-            yellow,
-            blue,
-            magenta,
-            cyan,
-            white,
-            bright_black,
-            bright_red,
-            bright_green,
-            bright_yellow,
-            bright_blue,
-            bright_magenta,
-            bright_cyan,
-            bright_white,
-            foreground,
-            background,
+            self.normal.black,
+            self.normal.red,
+            self.normal.green,
+            self.normal.yellow,
+            self.normal.blue,
+            self.normal.magenta,
+            self.normal.cyan,
+            self.normal.white,
+            self.bright.black,
+            self.bright.red,
+            self.bright.green,
+            self.bright.yellow,
+            self.bright.blue,
+            self.bright.magenta,
+            self.bright.cyan,
+            self.bright.white,
+            self.primary.foreground,
+            self.primary.background,
         ]
     }
 }
-impl Default for PrimaryColors {
+impl Default for ColorPair {
     fn default() -> Self {
-        Self {
-            foreground: [229, 229, 229],
-            background: [0, 0, 0],
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+}
+impl ColorPair {
+    fn default_cursor() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+    fn default_ime() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
+        }
+    }
+    fn default_primary() -> Self {
+        ColorPair {
+            foreground: [0, 0, 0],
+            background: [255, 255, 255],
         }
     }
 }
