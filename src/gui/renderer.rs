@@ -126,6 +126,7 @@ pub struct Renderer {
     palette: [[u8; 3]; 18],
     preedit_text: String,
     preedit_cursor: Option<(usize, usize)>,
+    padding_color: wgpu::Color,
 }
 impl Renderer {
     const IME_BUFFER_CELLS: usize = 256;
@@ -133,8 +134,10 @@ impl Renderer {
         gpu: &GpuContext,
         atlas: &GlyphAtlas,
         terminal: &Terminal,
-        config: &crate::config::ColorsConfig,
+        config: &crate::config::Config,
     ) -> Self {
+        let color_config = &config.colors;
+
         use wgpu::util::DeviceExt as _;
         let device = &gpu.device;
         let grid = terminal.active_grid();
@@ -155,9 +158,20 @@ impl Renderer {
             mapped_at_creation: false,
         });
         let [cell_width, cell_height] = atlas.cell_size();
-        let cursor_colors = config.to_cursor_colors();
-        let ime_colors = config.to_ime_colors();
-        let palette = config.to_palette();
+        let cursor_colors = color_config.to_cursor_colors();
+        let ime_colors = color_config.to_ime_colors();
+        let palette = color_config.to_palette();
+        let padding_color = {
+            let [r, g, b] = config.window.padding_color.unwrap_or(
+                palette[crate::core::NamedColor::Background as usize],
+            );
+            wgpu::Color {
+                r: r as f64 / 255.0,
+                g: g as f64 / 255.0,
+                b: b as f64 / 255.0,
+                a: 1.0,
+            }
+        };
         let uniform = GridUniform {
             cell_size: [cell_width as f32, cell_height as f32],
             grid_size: [grid.grid_cols() as u32, grid.grid_rows() as u32],
@@ -347,6 +361,7 @@ impl Renderer {
             palette,
             preedit_text: String::new(),
             preedit_cursor: None,
+            padding_color,
         }
     }
     pub fn resize(
@@ -438,7 +453,7 @@ impl Renderer {
                     view: &texture_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::RED),
+                        load: wgpu::LoadOp::Clear(self.padding_color),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,

@@ -62,7 +62,7 @@ impl App {
         )
         .expect("ターミナルの起動に失敗しました");
 
-        let renderer = Renderer::new(&gpu, &atlas, &terminal, &config.colors);
+        let renderer = Renderer::new(&gpu, &atlas, &terminal, config);
 
         App {
             gpu,
