@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub log_level: log::LevelFilter,
@@ -10,28 +10,35 @@ pub struct Config {
     pub colors: ColorsConfig,
     pub scrollback: usize,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Deserialize)]
 #[serde(default)]
 pub struct FontConfig {
     pub family: Option<String>,
-    pub size: f32,
+    pub size: FontSize,
     pub bold: Option<FontStyleConfig>,
     pub italic: Option<FontStyleConfig>,
     pub bold_italic: Option<FontStyleConfig>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum FontSize {
+    Pt(f64),
+    WithUnit(String),
+}
+#[derive(Clone, Default, Debug, Deserialize)]
+#[serde(default)]
 pub struct FontStyleConfig {
     pub family: Option<String>,
     pub weight: Option<String>,
     pub style: Option<String>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ShellConfig {
     pub program: String,
     pub args: Vec<String>,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ColorsConfig {
     #[serde(default = "ColorPair::default_cursor")]
@@ -45,7 +52,7 @@ pub struct ColorsConfig {
     #[serde(default = "AnsiColors::default_bright")]
     pub bright: AnsiColors,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ColorPair {
     #[serde(deserialize_with = "deserialize_hex_color")]
@@ -53,7 +60,7 @@ pub struct ColorPair {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub background: [u8; 3],
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct AnsiColors {
     #[serde(deserialize_with = "deserialize_hex_color")]
@@ -73,7 +80,7 @@ pub struct AnsiColors {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub white: [u8; 3],
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct WindowConfig {
     #[serde(default, deserialize_with = "deserialize_hex_color_opt")]
@@ -81,14 +88,39 @@ pub struct WindowConfig {
     pub dynamic_padding: bool,
 }
 
-impl Default for FontConfig {
+impl Default for FontSize {
     fn default() -> Self {
-        Self {
-            family: None,
-            size: 16.0,
-            bold: None,
-            italic: None,
-            bold_italic: None,
+        Self::Pt(16.0)
+    }
+}
+impl FontSize {
+    pub fn to_px(&self, scale_factor: f64) -> f64 {
+        match self {
+            FontSize::Pt(pt) => pt * scale_factor * 96.0 / 72.0,
+            FontSize::WithUnit(s) => {
+                let default_px = || FontSize::default().to_px(scale_factor);
+                if let Some(v) = s.strip_suffix("px") {
+                    let Ok(px) = v.parse::<f64>()
+                    else {
+                        return default_px();
+                    };
+                    px
+                }
+                else if let Some(v) = s.strip_suffix("pt") {
+                    let Ok(pt) = v.parse::<f64>()
+                    else {
+                        return default_px();
+                    };
+                    pt * scale_factor * 96.0 / 72.0
+                }
+                else {
+                    let Ok(pt) = s.parse::<f64>()
+                    else {
+                        return default_px();
+                    };
+                    pt * scale_factor * 96.0 / 72.0
+                }
+            }
         }
     }
 }
@@ -200,7 +232,7 @@ impl ColorsConfig {
 }
 impl Default for ColorPair {
     fn default() -> Self {
-        ColorPair {
+        Self {
             foreground: [0, 0, 0],
             background: [255, 255, 255],
         }
@@ -259,7 +291,7 @@ impl AnsiColors {
 }
 impl Default for WindowConfig {
     fn default() -> Self {
-        WindowConfig {
+        Self {
             padding_color: None,
             dynamic_padding: true,
         }
