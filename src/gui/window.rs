@@ -60,7 +60,7 @@ impl ApplicationHandler<TermEvent> for AppHandler {
                 event::handle_redraw(app);
             }
             WindowEvent::Resized(size) => {
-                app.resize(size);
+                event::handle_resize(app, size);
             }
             WindowEvent::Ime(ime) => {
                 event::handle_ime(app, ime);

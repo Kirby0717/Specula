@@ -1,11 +1,11 @@
 use super::{MouseButton, Selection, SelectionKind};
 use crate::{
-    core::{Point, TerminalMode},
+    core::{Grid, Point, TerminalMode},
     gui::App,
 };
 
 use winit::{
-    dpi::PhysicalPosition,
+    dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Ime, KeyEvent, MouseScrollDelta},
 };
 
@@ -32,6 +32,35 @@ pub(super) fn handle_redraw(app: &mut App) {
         &mut app.atlas,
         &app.terminal,
         [begin, end],
+    );
+}
+pub(super) fn handle_resize(app: &mut App, size: PhysicalSize<u32>) {
+    app.gpu.size = size;
+    app.gpu.configure_surface();
+
+    let [cell_width, cell_height] = app.atlas.cell_size();
+    let rows = (size.height / cell_height) as usize;
+    let cols = (size.width / cell_width) as usize;
+    let rows = rows.clamp(Grid::MIN_ROWS, Grid::MAX_ROWS);
+    let cols = cols.clamp(Grid::MIN_COLS, Grid::MAX_COLS);
+
+    if app.padding.is_some() {
+        let window_width = size.width;
+        let window_height = size.height;
+        let padding_x =
+            (window_width.saturating_sub(cols as u32 * cell_width)) / 2;
+        let padding_y =
+            (window_height.saturating_sub(rows as u32 * cell_height)) / 2;
+        app.padding = Some([padding_x as f32, padding_y as f32]);
+    }
+
+    app.terminal.resize(rows, cols);
+    app.renderer.resize(
+        &app.gpu,
+        &app.atlas,
+        rows,
+        cols,
+        app.padding.unwrap_or_default(),
     );
 }
 pub(super) fn handle_ime(app: &mut App, ime: Ime) {
