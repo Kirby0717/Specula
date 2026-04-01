@@ -85,6 +85,8 @@ impl App {
         let [cell_width, cell_height] = self.atlas.cell_size();
         let rows = (new_size.height / cell_height) as usize;
         let cols = (new_size.width / cell_width) as usize;
+        let rows = rows.clamp(Grid::MIN_ROWS, Grid::MAX_ROWS);
+        let cols = cols.clamp(Grid::MIN_COLS, Grid::MAX_COLS);
 
         self.terminal.resize(rows, cols);
         self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
