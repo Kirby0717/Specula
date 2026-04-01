@@ -692,6 +692,10 @@ impl Terminal {
         }
     }
     pub fn resize(&mut self, rows: usize, cols: usize) {
+        let grid = self.active_grid();
+        if grid.grid_cols() == cols && grid.grid_rows() == rows {
+            return;
+        }
         self.process_pty_output();
         self.core.resize(rows, cols);
         self.pty.resize(rows as u16, cols as u16);

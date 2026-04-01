@@ -78,6 +78,7 @@ pub struct AnsiColors {
 pub struct WindowConfig {
     #[serde(default, deserialize_with = "deserialize_hex_color_opt")]
     pub padding_color: Option<[u8; 3]>,
+    pub dynamic_padding: bool,
 }
 
 impl Default for FontConfig {
@@ -260,6 +261,7 @@ impl Default for WindowConfig {
     fn default() -> Self {
         WindowConfig {
             padding_color: None,
+            dynamic_padding: true,
         }
     }
 }

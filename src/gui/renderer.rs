@@ -110,7 +110,7 @@ pub struct GridUniform {
     _padding1: u32,
     viewport_size: [f32; 2],
     selection_range: [u32; 2],
-    _padding2: [u32; 2],
+    padding: [f32; 2],
 }
 
 pub struct Renderer {
@@ -192,7 +192,7 @@ impl Renderer {
                 [window_size.width as f32, window_size.height as f32]
             },
             selection_range: [0, 0],
-            _padding2: Default::default(),
+            padding: Default::default(),
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -370,6 +370,7 @@ impl Renderer {
         atlas: &GlyphAtlas,
         rows: usize,
         cols: usize,
+        padding: [f32; 2],
     ) {
         let need_buffer_size = ((rows * cols + Self::IME_BUFFER_CELLS)
             * size_of::<GpuCell>()) as u64;
@@ -413,6 +414,7 @@ impl Renderer {
         let window_size = gpu.size;
         self.uniform.viewport_size =
             [window_size.width as f32, window_size.height as f32];
+        self.uniform.padding = padding;
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,

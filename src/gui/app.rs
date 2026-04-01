@@ -22,6 +22,7 @@ pub(super) struct App {
     pub mouse_state: MouseButton,
     pub last_click_time: Instant,
     pub selection: Option<Selection>,
+    pub padding: Option<[f32; 2]>,
 }
 impl App {
     pub const MULTI_CLICK_INTERVAL: std::time::Duration =
@@ -64,6 +65,7 @@ impl App {
 
         let renderer = Renderer::new(&gpu, &atlas, &terminal, config);
 
+        log::error!("{:?}", config.window);
         App {
             gpu,
             window,
@@ -76,6 +78,15 @@ impl App {
             mouse_state: MouseButton::default(),
             last_click_time: Instant::now(),
             selection: None,
+            padding: config.window.dynamic_padding.then_some({
+                let window_width = window_size.width;
+                let window_height = window_size.height;
+                let padding_x =
+                    (window_width.saturating_sub(cols * cell_width)) / 2;
+                let padding_y =
+                    (window_height.saturating_sub(rows * cell_height)) / 2;
+                [padding_x as f32, padding_y as f32]
+            }),
         }
     }
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -88,8 +99,24 @@ impl App {
         let rows = rows.clamp(Grid::MIN_ROWS, Grid::MAX_ROWS);
         let cols = cols.clamp(Grid::MIN_COLS, Grid::MAX_COLS);
 
+        if self.padding.is_some() {
+            let window_width = new_size.width;
+            let window_height = new_size.height;
+            let padding_x =
+                (window_width.saturating_sub(cols as u32 * cell_width)) / 2;
+            let padding_y =
+                (window_height.saturating_sub(rows as u32 * cell_height)) / 2;
+            self.padding = Some([padding_x as f32, padding_y as f32]);
+        }
+
         self.terminal.resize(rows, cols);
-        self.renderer.resize(&self.gpu, &self.atlas, rows, cols);
+        self.renderer.resize(
+            &self.gpu,
+            &self.atlas,
+            rows,
+            cols,
+            self.padding.unwrap_or_default(),
+        );
     }
     pub fn convert_mouse_button_event(
         &self,
