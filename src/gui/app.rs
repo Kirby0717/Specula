@@ -65,7 +65,6 @@ impl App {
 
         let renderer = Renderer::new(&gpu, &atlas, &terminal, config);
 
-        log::error!("{:?}", config.window);
         App {
             gpu,
             window,
