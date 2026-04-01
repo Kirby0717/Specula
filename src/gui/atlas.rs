@@ -76,7 +76,11 @@ pub(super) struct GlyphAtlas {
 impl GlyphAtlas {
     pub const ATLAS_SIZE: u32 = 1 << 11;
     const GLYPH_PADDING: u32 = 1;
-    pub fn new(gpu: &GpuContext, config: &crate::config::FontConfig) -> Self {
+    pub fn new(
+        gpu: &GpuContext,
+        scale_factor: f64,
+        config: &crate::config::FontConfig,
+    ) -> Self {
         // フォントの読み込み
         let mut db = Database::new();
         db.load_system_fonts();
@@ -124,11 +128,9 @@ impl GlyphAtlas {
             log::info!("太字斜体フォント: {}", font.name().unwrap_or_default());
         }
 
-        let ascent = font
-            .horizontal_line_metrics(config.size)
-            .unwrap()
-            .ascent
-            .ceil() as i32;
+        let px = config.size.to_px(scale_factor) as f32;
+        let ascent =
+            font.horizontal_line_metrics(px).unwrap().ascent.floor() as i32;
 
         // アトラステクスチャの作成
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -155,7 +157,7 @@ impl GlyphAtlas {
             font_italic,
             font_bold_italic,
             ascent,
-            px: config.size,
+            px,
             cache: HashMap::default(),
             texture,
             view,
@@ -189,9 +191,9 @@ impl GlyphAtlas {
     }
     pub fn cell_size(&self) -> [u32; 2] {
         let lm = self.font.horizontal_line_metrics(self.px).unwrap();
-        let h = (lm.ascent - lm.descent).ceil() as u32;
+        let h = (lm.ascent - lm.descent).floor() as u32;
         let (m, _) = self.font.rasterize(' ', self.px);
-        let w = m.advance_width.ceil() as u32;
+        let w = m.advance_width.floor() as u32;
         [w, h]
     }
     fn font_for_style(&self, style: FontStyle) -> Option<&Font> {

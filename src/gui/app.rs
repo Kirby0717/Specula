@@ -36,7 +36,7 @@ impl App {
         let mut gpu = GpuContext::new(&window);
         gpu.configure_surface();
 
-        let atlas = GlyphAtlas::new(&gpu, &config.font);
+        let atlas = GlyphAtlas::new(&gpu, window.scale_factor(), &config.font);
         let cell_size = atlas.cell_size();
         let cell_width = cell_size[0];
         let cell_height = cell_size[1];
