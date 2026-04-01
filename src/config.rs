@@ -6,6 +6,7 @@ pub struct Config {
     pub log_level: log::LevelFilter,
     pub font: FontConfig,
     pub shell: ShellConfig,
+    pub window: WindowConfig,
     pub colors: ColorsConfig,
     pub scrollback: usize,
 }
@@ -72,6 +73,13 @@ pub struct AnsiColors {
     #[serde(deserialize_with = "deserialize_hex_color")]
     pub white: [u8; 3],
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WindowConfig {
+    #[serde(default, deserialize_with = "deserialize_hex_color_opt")]
+    pub padding_color: Option<[u8; 3]>,
+    pub dynamic_padding: bool,
+}
 
 impl Default for FontConfig {
     fn default() -> Self {
@@ -136,6 +144,7 @@ impl Default for Config {
             shell: ShellConfig::default(),
             colors: ColorsConfig::default(),
             scrollback: 1_000_000,
+            window: WindowConfig::default(),
         }
     }
 }
@@ -248,6 +257,14 @@ impl AnsiColors {
         }
     }
 }
+impl Default for WindowConfig {
+    fn default() -> Self {
+        WindowConfig {
+            padding_color: None,
+            dynamic_padding: true,
+        }
+    }
+}
 
 fn deserialize_hex_color<'de, D>(deserializer: D) -> Result<[u8; 3], D::Error>
 where
@@ -257,7 +274,17 @@ where
     parse_hex_color(&s)
         .ok_or_else(|| serde::de::Error::custom(format!("無効な色指定: {s}")))
 }
-
+fn deserialize_hex_color_opt<'de, D>(
+    deserializer: D,
+) -> Result<Option<[u8; 3]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    parse_hex_color(&s)
+        .ok_or_else(|| serde::de::Error::custom(format!("無効な色指定: {s}")))
+        .map(Some)
+}
 fn parse_hex_color(s: &str) -> Option<[u8; 3]> {
     let s = s.strip_prefix('#')?;
     if s.len() != 6 {
