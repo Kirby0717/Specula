@@ -22,7 +22,7 @@ struct GridUniform {
     _pad1: u32,
     viewport_size: vec2<f32>,
     selection_range: vec2<u32>,
-    padding: vec2<f32>,
+    _pad2: vec2<u32>,
 }
 
 // 装飾などは前景と背景の色を切り替える
@@ -41,7 +41,7 @@ fn vs_cell(@builtin(vertex_index) i: u32, cell: GpuCell) -> CellOut {
     )[i];
 
     let cell_pos = cell.cell_pos;
-    let pixel_pos = grid.padding + vec2<f32>(rect + cell_pos) * grid.cell_size;
+    let pixel_pos = vec2<f32>(rect + cell_pos) * grid.cell_size;
     let ndc = pixel_pos / grid.viewport_size * 2.0 - 1.0;
     let pos = vec4(ndc.x, -ndc.y, 0.0, 1.0);
 
@@ -52,17 +52,19 @@ fn vs_cell(@builtin(vertex_index) i: u32, cell: GpuCell) -> CellOut {
     return CellOut(
         pos,
         cell_pos,
+        vec2<f32>(rect) * grid.cell_size,
         fg,
         bg,
-        flags
+        flags,
     );
 }
 struct CellOut {
     @builtin(position)              pos: vec4<f32>,
     @location(0)                    cell_pos: vec2<u32>,
-    @location(1)                    fg: vec4<f32>,
-    @location(2)                    bg: vec4<f32>,
-    @location(3) @interpolate(flat) flags: u32,
+    @location(1)                    local_pos: vec2<f32>,
+    @location(2)                    fg: vec4<f32>,
+    @location(3)                    bg: vec4<f32>,
+    @location(4) @interpolate(flat) flags: u32,
 }
 @fragment
 fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
@@ -70,9 +72,9 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     var fg = cell.fg;
     var bg = cell.bg;
     let cell_index = cell.cell_pos.y * grid.grid_size.x + cell.cell_pos.x;
+    let local_pos = cell.local_pos;
 
     // カーソル
-    let local_pos = cell.pos.xy - vec2<f32>(cell.cell_pos) * grid.cell_size;
     if grid.cursor_range.x <= cell_index && cell_index < grid.cursor_range.y {
         apply_cursor(&fg, &bg, local_pos);
     }
@@ -93,7 +95,6 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     }
     // 下線
     if (flags & 0x0008) != 0 {
-        let local_pos = cell.pos.xy % grid.cell_size;
         if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y + 0.5 {
             let tem = fg;
             fg = bg;
@@ -102,9 +103,8 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     }
     // 取り消し線
     if (flags & 0x0080) != 0 {
-        let local_pos = cell.pos.xy % grid.cell_size;
         let center = grid.cell_size.y / 2.0;
-        if center - 1.5 < local_pos.y && local_pos.y < center + 2.5 {
+        if center - 1.5 < local_pos.y && local_pos.y < center + 1.5 {
             let tem = fg;
             fg = bg;
             bg = tem;
@@ -140,7 +140,7 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
 
     let cell_pos = cell.cell_pos;
     let origin = vec2<f32>(cell_pos) * grid.cell_size + cell.offset;
-    let pixel_pos = grid.padding + origin + glyph_pos;
+    let pixel_pos = origin + glyph_pos;
     let ndc = pixel_pos / grid.viewport_size * 2.0 - 1.0;
     let pos = vec4(ndc.x, -ndc.y, 0.0, 1.0);
 
@@ -148,16 +148,26 @@ fn vs_glyph(@builtin(vertex_index) i: u32, cell: GpuCell) -> GlyphOut {
     var fg = cell.fg;
     var bg = cell.bg;
 
-    return GlyphOut(pos, cell_pos, uv, fg, bg, flags, glyph_pos);
+    return GlyphOut(
+        pos,
+        cell_pos, 
+        cell.offset + vec2<f32>(rect) * cell.size,
+        uv,
+        fg,
+        bg,
+        flags,
+        glyph_pos,
+    );
 }
 struct GlyphOut {
     @builtin(position)              pos: vec4<f32>,
     @location(0)                    cell_pos: vec2<u32>,
-    @location(1)                    uv: vec2<f32>,
-    @location(2)                    fg: vec4<f32>,
-    @location(3)                    bg: vec4<f32>,
-    @location(4) @interpolate(flat) flags: u32,
-    @location(5)                    glyph_pos: vec2<f32>,
+    @location(1)                    local_pos: vec2<f32>,
+    @location(2)                    uv: vec2<f32>,
+    @location(3)                    fg: vec4<f32>,
+    @location(4)                    bg: vec4<f32>,
+    @location(5) @interpolate(flat) flags: u32,
+    @location(6)                    glyph_pos: vec2<f32>,
 }
 @fragment
 fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
@@ -165,9 +175,9 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
     var fg = glyph.fg;
     var bg = glyph.bg;
     let cell_index = glyph.cell_pos.y * grid.grid_size.x + glyph.cell_pos.x;
+    let local_pos = glyph.local_pos;
 
     // カーソル
-    let local_pos = glyph.pos.xy - vec2<f32>(glyph.cell_pos) * grid.cell_size;
     if grid.cursor_range.x <= cell_index && cell_index < grid.cursor_range.y {
         apply_cursor(&fg, &bg, local_pos);
     }

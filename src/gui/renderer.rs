@@ -110,7 +110,7 @@ pub struct GridUniform {
     _padding1: u32,
     viewport_size: [f32; 2],
     selection_range: [u32; 2],
-    padding: [f32; 2],
+    _padding2: [u32; 2],
 }
 
 pub struct Renderer {
@@ -127,6 +127,7 @@ pub struct Renderer {
     preedit_text: String,
     preedit_cursor: Option<(usize, usize)>,
     padding_color: wgpu::Color,
+    padding: [f32; 2],
 }
 impl Renderer {
     const IME_BUFFER_CELLS: usize = 256;
@@ -192,7 +193,7 @@ impl Renderer {
                 [window_size.width as f32, window_size.height as f32]
             },
             selection_range: [0, 0],
-            padding: Default::default(),
+            _padding2: Default::default(),
         };
         let uniform_buffer =
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -362,6 +363,7 @@ impl Renderer {
             preedit_text: String::new(),
             preedit_cursor: None,
             padding_color,
+            padding: Default::default(),
         }
     }
     pub fn resize(
@@ -372,6 +374,7 @@ impl Renderer {
         cols: usize,
         padding: [f32; 2],
     ) {
+        self.padding = padding;
         let need_buffer_size = ((rows * cols + Self::IME_BUFFER_CELLS)
             * size_of::<GpuCell>()) as u64;
         if self.cell_buffer.size() < need_buffer_size {
@@ -411,10 +414,9 @@ impl Renderer {
         }
 
         self.uniform.grid_size = [cols as u32, rows as u32];
-        let window_size = gpu.size;
+        let [cell_w, cell_h] = atlas.cell_size();
         self.uniform.viewport_size =
-            [window_size.width as f32, window_size.height as f32];
-        self.uniform.padding = padding;
+            [cols as f32 * cell_w as f32, rows as f32 * cell_h as f32];
         gpu.queue.write_buffer(
             &self.uniform_buffer,
             0,
@@ -759,6 +761,14 @@ impl Renderer {
 
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.cell_buffer.slice(..));
+        render_pass.set_viewport(
+            self.padding[0],
+            self.padding[1],
+            self.uniform.viewport_size[0],
+            self.uniform.viewport_size[1],
+            0.0,
+            1.0,
+        );
         // グリッドの描画
         render_pass.set_pipeline(&self.cell_render_pipeline);
         render_pass.draw(0..6, grid_bg_range);
@@ -786,7 +796,10 @@ impl Renderer {
             let x = ime_start_position.col as u32 * cell_w;
             let y = ime_start_position.row as u32 * cell_h;
             window.set_ime_cursor_area(
-                winit::dpi::PhysicalPosition::new(x, y),
+                winit::dpi::PhysicalPosition::new(
+                    x + self.padding[0] as u32,
+                    y + self.padding[1] as u32,
+                ),
                 winit::dpi::PhysicalSize::new(
                     cell_w,
                     cell_h
