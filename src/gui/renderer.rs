@@ -442,7 +442,9 @@ impl Renderer {
             match gpu.surface.get_current_texture() {
                 Success(frame) => frame,
                 Suboptimal(frame) => {
-                    gpu.configure_surface();
+                    // 本当なら再設定が良いが、
+                    // 煩雑になる&次Outdatedなどですぐに再設定されるので無視
+                    //gpu.configure_surface();
                     frame
                 }
                 Timeout | Occluded => {
@@ -450,11 +452,13 @@ impl Renderer {
                 }
                 Outdated => {
                     gpu.configure_surface();
+                    window.request_redraw();
                     return;
                 }
                 Lost => {
                     // 再作成の方が最適
                     gpu.configure_surface();
+                    window.request_redraw();
                     return;
                 }
                 Validation => {
