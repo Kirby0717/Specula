@@ -15,10 +15,14 @@ pub struct GpuContext {
     pub surface_format: wgpu::TextureFormat,
 }
 impl GpuContext {
-    pub fn new(window: &Arc<Window>) -> Self {
+    pub fn new(
+        window: &Arc<Window>,
+        display_handle: Box<dyn wgpu::wgt::instance::WgpuHasDisplayHandle>,
+    ) -> Self {
         // デバイスとキューの作成
-        let instance =
-            wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(
+            wgpu::InstanceDescriptor::new_with_display_handle(display_handle),
+        );
         use pollster::FutureExt as _;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions::default())
@@ -263,8 +267,8 @@ impl Renderer {
         let pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("PipelineLayout"),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&bind_group_layout)],
+                immediate_size: 0,
             });
         let cell_render_pipeline = gpu.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
@@ -303,7 +307,7 @@ impl Renderer {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             },
         );
@@ -344,7 +348,7 @@ impl Renderer {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             },
         );
@@ -426,16 +430,38 @@ impl Renderer {
     pub fn render(
         &mut self,
         window: &winit::window::Window,
-        gpu: &GpuContext,
+        gpu: &mut GpuContext,
         atlas: &mut GlyphAtlas,
         terminal: &Terminal,
         selection_range: [u32; 2],
     ) {
         // スワップチェーンのバックバッファの取得
-        let surface_texture = gpu
-            .surface
-            .get_current_texture()
-            .expect("failed to acquire next swapchain texture");
+        let surface_texture = {
+            use wgpu::CurrentSurfaceTexture::*;
+            match gpu.surface.get_current_texture() {
+                Success(frame) => frame,
+                Suboptimal(frame) => {
+                    gpu.configure_surface();
+                    frame
+                }
+                Timeout | Occluded => {
+                    return;
+                }
+                Outdated => {
+                    gpu.configure_surface();
+                    return;
+                }
+                Lost => {
+                    // 再作成の方が最適
+                    gpu.configure_surface();
+                    return;
+                }
+                Validation => {
+                    log::error!("surface validation error");
+                    return;
+                }
+            }
+        };
         let texture_view =
             surface_texture
                 .texture
@@ -465,6 +491,7 @@ impl Renderer {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
         let grid = terminal.active_grid();
