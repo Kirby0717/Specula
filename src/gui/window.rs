@@ -39,7 +39,12 @@ impl ApplicationHandler<TermEvent> for AppHandler {
             .create_window(window_attributes)
             .expect("ウィンドウの作成に失敗しました");
         window.set_ime_allowed(true);
-        self.app = Some(App::new(window, &self.proxy, &self.config));
+        self.app = Some(App::new(
+            window,
+            Box::new(event_loop.owned_display_handle()),
+            &self.proxy,
+            &self.config,
+        ));
     }
     fn window_event(
         &mut self,

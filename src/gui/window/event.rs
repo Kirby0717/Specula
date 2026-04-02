@@ -28,7 +28,7 @@ pub(super) fn handle_redraw(app: &mut App) {
 
     app.renderer.render(
         &app.window,
-        &app.gpu,
+        &mut app.gpu,
         &mut app.atlas,
         &app.terminal,
         [begin, end],

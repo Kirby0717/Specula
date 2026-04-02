@@ -29,11 +29,12 @@ impl App {
         std::time::Duration::from_millis(500);
     pub fn new(
         window: Window,
+        display_handle: Box<dyn wgpu::wgt::instance::WgpuHasDisplayHandle>,
         proxy: &EventLoopProxy<TermEvent>,
         config: &crate::config::Config,
     ) -> Self {
         let window = Arc::new(window);
-        let mut gpu = GpuContext::new(&window);
+        let mut gpu = GpuContext::new(&window, display_handle);
         gpu.configure_surface();
 
         let atlas = GlyphAtlas::new(&gpu, window.scale_factor(), &config.font);
