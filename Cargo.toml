@@ -1,8 +1,17 @@
 [package]
 name = "specula"
-version = "0.1.0-beta.2"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+authors = ["Kirby0717 <niconicoyusei@gmail.com>"]
+description = "Rustで作ってみた普通のターミナル。特徴はなにもなくなんとなく動く。"
+repository = "https://github.com/Kirby0717/Specula"
+
+[package.metadata.wix]
+upgrade-guid = "CB1BD750-F5D8-484A-BD7F-9235F124D922"
+path-guid = "69DB2B5A-5F1F-4AA9-94AA-7389F676D322"
+license = false
+eula = false
 
 [dependencies]
 anyhow = "1"
@@ -23,3 +32,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "1"
 dirs = "6"
 fontdb = "0.23"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
