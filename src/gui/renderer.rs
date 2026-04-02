@@ -1,6 +1,7 @@
 use super::atlas::{FontStyle, GlyphAtlas, GlyphInfo, GlyphKey};
 use crate::core::{
-    CellFlags, Terminal, TerminalMode, rgb_to_rgba, rgb_to_rgba_f32,
+    CellFlags, CursorStyle, Terminal, TerminalMode, rgb_to_rgba,
+    rgb_to_rgba_f32,
 };
 
 use std::sync::Arc;
@@ -774,10 +775,13 @@ impl Renderer {
         }
         self.uniform.cursor_style = terminal.cursor_style() as u32;
         if bar_cursor.is_some() {
-            self.uniform.cursor_style = crate::core::CursorStyle::Bar as u32;
+            self.uniform.cursor_style = CursorStyle::Bar as u32;
         }
         if !terminal.mode().contains(TerminalMode::CURSOR_VISIBLE) {
-            self.uniform.cursor_style = crate::core::CursorStyle::Hidden as u32;
+            self.uniform.cursor_style = CursorStyle::Hidden as u32;
+        }
+        if self.uniform.cursor_style == CursorStyle::Bar as u32 {
+            self.uniform.cursor_range[1] = self.uniform.cursor_range[0] + 1;
         }
         self.uniform.selection_range = selection_range;
         gpu.queue.write_buffer(

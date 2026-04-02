@@ -95,7 +95,7 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     }
     // 下線
     if (flags & 0x0008) != 0 {
-        if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y + 0.5 {
+        if grid.cell_size.y - 3.0 < local_pos.y && local_pos.y < grid.cell_size.y - 1.0 {
             let tem = fg;
             fg = bg;
             bg = tem;
@@ -104,7 +104,7 @@ fn fs_cell(cell: CellOut) -> @location(0) vec4<f32> {
     // 取り消し線
     if (flags & 0x0080) != 0 {
         let center = grid.cell_size.y / 2.0;
-        if center - 1.5 < local_pos.y && local_pos.y < center + 1.5 {
+        if center - 1.0 < local_pos.y && local_pos.y < center + 1.0 {
             let tem = fg;
             fg = bg;
             bg = tem;
@@ -198,7 +198,7 @@ fn fs_glyph(glyph: GlyphOut) -> @location(0) vec4<f32> {
     }
     // 不可視
     if (flags & 0x0040) != 0 {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        return vec4<f32>(0);
     }
 
     // 斜体
@@ -221,13 +221,13 @@ fn apply_cursor(fg: ptr<function, vec4<f32>>, bg: ptr<function, vec4<f32>>, loca
             *bg = grid.cursor_bg;
         }
         case 2, 5: {
-            if grid.cell_size.y - 2.5 < local_pos.y && local_pos.y < grid.cell_size.y + 0.5 {
+            if grid.cell_size.y - 2.0 < local_pos.y && local_pos.y < grid.cell_size.y {
                 *fg = grid.cursor_fg;
                 *bg = grid.cursor_bg;
             }
         }
         case 3, 6: {
-            if local_pos.x < 2.5 {
+            if 0.0 < local_pos.x && local_pos.x < 2.0 {
                 *fg = grid.cursor_fg;
                 *bg = grid.cursor_bg;
             }
