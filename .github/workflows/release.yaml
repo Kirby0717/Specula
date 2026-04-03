@@ -1,0 +1,224 @@
+name: リリースアクション
+
+
+on:
+  release:
+    types: [created]
+
+
+permissions:
+  contents: write
+
+
+jobs:
+  generate-third-party-licenses:
+    name: サードパーティライセンスの生成
+    runs-on: ubuntu-latest
+
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v5
+
+
+      - name: Rustのインストール
+        run: rustup toolchain install stable --profile minimal
+
+
+      - name: cargo-aboutのインストール
+        run: cargo install --locked cargo-about
+
+
+      - name: about.hbsの生成
+        run: |
+          cargo about init
+          rm about.toml
+
+      - name: about.tomlの生成
+        shell: python
+        run: |
+          import sys
+
+          # Python 3.11+ では tomllib が標準ライブラリ
+          # それ以前では tomli を使用
+          try:
+              import tomllib
+          except ImportError:
+              # Python 3.10以前の場合、pipでインストールが必要
+              import subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "tomli", "-q"])
+              import tomli as tomllib
+
+          # deny.toml を読み込む
+          with open("deny.toml", "rb") as f:
+              deny_config = tomllib.load(f)
+
+          # licenses.allow を取得
+          licenses_allow = deny_config.get("licenses", {}).get("allow", [])
+
+          print(f"Found licenses: {licenses_allow}")
+
+          # about.toml を生成
+          # tomllib は読み取り専用なので、手動でTOMLを書き出す
+          with open("about.toml", "w", encoding="utf-8") as f:
+              f.write("# Auto-generated from deny.toml\n")
+              f.write("accepted = [\n")
+              for license in licenses_allow:
+                  f.write(f'    "{license}",\n')
+              f.write("]\n")
+
+          print("Generated about.toml:")
+          with open("about.toml", "r") as f:
+              print(f.read())
+
+      - name: THIRD-PARTY-LICENSES.htmlの生成
+        run: cargo about generate about.hbs > THIRD-PARTY-LICENSES.html
+
+
+      - name: THIRD-PARTY-LICENSES.htmlのアップロード
+        uses: actions/upload-artifact@v7
+        with:
+          name: third-party-licenses
+          path: THIRD-PARTY-LICENSES.html
+
+
+  release:
+    name: リリース ${{ matrix.target }}
+    needs: generate-third-party-licenses
+    runs-on: ${{ matrix.os }}
+    # ビルドマトリックス戦略の設定
+    strategy:
+      # 1つのジョブが失敗しても他のジョブを継続する
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 64bit
+          - target: x86_64-pc-windows-gnu
+            os: windows-latest
+            archive: zip
+            ext: .exe
+
+
+          # Linux (64bit, 動的リンク)
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            ext: ""
+
+
+          # macOS (Apple Silicon)
+          #- target: aarch64-apple-darwin
+          #  os: macos-latest
+          #  archive: tar.gz
+          #  ext: ""
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v6
+
+
+      - name: THIRD-PARTY-LICENSES.htmlのダウンロード
+        uses: actions/download-artifact@v8
+        with:
+          name: third-party-licenses
+          path: ./
+
+
+      - name: Rustのインストール
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Linux用GPU/ウィンドウ関連の依存関係をインストール
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libvulkan-dev
+
+      - name: ターミナルのリリースビルド
+        run: cargo build --release --target ${{ matrix.target }}
+
+
+      - name: バイナリのストリップ (Linux/macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          strip target/${{ matrix.target }}/release/specula${{ matrix.ext }}
+
+      - name: 配布用ディレクトリの作成
+        shell: bash
+        run: |
+          # バイナリ名とバージョンを設定（適宜変更してください）
+          BINARY_NAME="specula"
+          VERSION="${GITHUB_REF_NAME}"
+
+          # 配布用ディレクトリ名
+          DIST_DIR="${BINARY_NAME}-${VERSION}-${{ matrix.target }}"
+
+          # ディレクトリ作成
+          mkdir -p "dist/${DIST_DIR}"
+
+          # バイナリをコピー
+          cp "target/${{ matrix.target }}/release/${BINARY_NAME}${{ matrix.ext }}" "dist/${DIST_DIR}/"
+
+          # 追加ファイルをコピー
+          cp LICENSE-APACHE "dist/${DIST_DIR}/" 2>/dev/null || true
+          cp LICENSE-MIT "dist/${DIST_DIR}/" 2>/dev/null || true
+          cp THIRD-PARTY-LICENSES.html "dist/${DIST_DIR}/"
+
+          # 環境変数として保存（後続ステップで使用）
+          echo "DIST_DIR=${DIST_DIR}" >> $GITHUB_ENV
+          echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+
+      - name: アーカイブの作成 (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          cd dist
+          tar -czvf "${DIST_DIR}.tar.gz" "${DIST_DIR}"
+          echo "ARCHIVE_PATH=dist/${DIST_DIR}.tar.gz" >> $GITHUB_ENV
+      - name: アーカイブの作成 (zip)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: |
+          cd dist
+          7z a "${DIST_DIR}.zip" "${DIST_DIR}"
+          echo "ARCHIVE_PATH=dist/${DIST_DIR}.zip" >> $GITHUB_ENV
+
+      - name: インストーラ表示用ライセンスの結合 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          echo "This software is dual-licensed under either the MIT License or the Apache License, Version 2.0, at your option." > LICENSE-AGREEMENT.txt
+          echo "" >> LICENSE-AGREEMENT.txt
+          echo "========================================" >> LICENSE-AGREEMENT.txt
+          echo " MIT License" >> LICENSE-AGREEMENT.txt
+          echo "========================================" >> LICENSE-AGREEMENT.txt
+          cat LICENSE-MIT >> LICENSE-AGREEMENT.txt
+          echo "" >> LICENSE-AGREEMENT.txt
+          echo "========================================" >> LICENSE-AGREEMENT.txt
+          echo " Apache License, Version 2.0" >> LICENSE-AGREEMENT.txt
+          echo "========================================" >> LICENSE-AGREEMENT.txt
+          cat LICENSE-APACHE >> LICENSE-AGREEMENT.txt
+
+      - name: NSISインストーラの生成 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          makensis installer.nsi
+          echo "INSTALLER_PATH=specula-setup.exe" >> $GITHUB_ENV
+
+      - name: GitHub Releaseへのアップロード
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARCHIVE_PATH }}
+            ${{ env.INSTALLER_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
