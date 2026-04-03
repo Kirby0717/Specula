@@ -29,8 +29,26 @@ impl AppHandler {
 }
 impl ApplicationHandler<TermEvent> for AppHandler {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let icon = {
+            use image::GenericImageView as _;
+            let data = include_bytes!("../../assets/icon.png");
+            let img = image::load_from_memory_with_format(
+                data,
+                image::ImageFormat::Png,
+            )
+            .expect("アイコン画像のデコードに失敗しました");
+            let (width, height) = img.dimensions();
+            winit::window::Icon::from_rgba(
+                img.into_rgba8().into_raw(),
+                width,
+                height,
+            )
+            .expect("アイコン画像の作成に失敗しました")
+        };
+
         let window_attributes = Window::default_attributes()
             .with_title("Specula")
+            .with_window_icon(Some(icon))
             .with_inner_size(winit::dpi::PhysicalSize {
                 width: 1920,
                 height: 1080,
