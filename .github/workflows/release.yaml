@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: リポジトリをチェックアウト
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: バージョンの整合性チェック
         shell: bash
@@ -33,8 +33,11 @@ jobs:
       - name: Rustのインストール
         run: rustup toolchain install stable --profile minimal
 
+      - name: cargo-binstallのインストール
+        uses: cargo-bins/cargo-binstall@v1
+
       - name: cargo-aboutのインストール
-        run: cargo install --locked cargo-about
+        run: cargo binstall --no-confirm cargo-about
 
       - name: about.hbsの生成
         run: |
@@ -178,6 +181,7 @@ jobs:
           # 環境変数として保存（後続ステップで使用）
           echo "DIST_DIR=${DIST_DIR}" >> $GITHUB_ENV
           echo "BINARY_NAME=${BINARY_NAME}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: アーカイブの作成 (tar.gz)
         if: matrix.archive == 'tar.gz'
@@ -212,20 +216,26 @@ jobs:
 
       - name: NSISのインストール
         if: matrix.os == 'windows-latest'
-        uses: repolevedavaj/setup-nsis@v1
+        uses: repolevedavaj/install-nsis@v1
 
       - name: NSISインストーラの生成 (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           makensis -DPRODUCT_VERSION=${VERSION} installer.nsi
-          echo "INSTALLER_PATH=specula-setup.exe" >> $GITHUB_ENV
+          echo "INSTALLER_PATH=${BINARY_NAME}-${VERSION}-setup.exe" >> $GITHUB_ENV
 
-      - name: GitHub Releaseへのアップロード
+      - name: GitHub Releaseへのアップロード (アーカイブ)
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ env.ARCHIVE_PATH }}
-            ${{ env.INSTALLER_PATH }}
+          files: ${{ env.ARCHIVE_PATH }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: GitHub Releaseへのアップロード (インストーラ)
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.INSTALLER_PATH }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
