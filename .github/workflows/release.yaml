@@ -22,7 +22,7 @@ jobs:
       - name: バージョンの整合性チェック
         shell: bash
         run: |
-          CARGO_VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "specula") | .version'
+          CARGO_VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "specula") | .version')
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
             echo "::error::バージョン不一致: Cargo.toml=${CARGO_VERSION}, tag=${TAG_VERSION}"
