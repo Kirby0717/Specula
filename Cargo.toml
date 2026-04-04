@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Kirby0717 <niconicoyusei@gmail.com>"]
 description = "Rustで作ってみた普通のターミナル。特徴はなにもなくなんとなく動く。"
-repository = "https://github.com/Kirby0717/Specula"
+repository = "https://github.com/Kirby0717/specula"
 build = "build.rs"
 
 [dependencies]
