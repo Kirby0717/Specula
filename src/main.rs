@@ -20,11 +20,16 @@ fn log_init(log_level: log::LevelFilter) {
         CombinedLogger, Config, SharedLogger, SimpleLogger, WriteLogger,
     };
 
+    let log_path = dirs::data_local_dir()
+        .map(|d| d.join("specula"))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("specula.log");
+
     let mut loggers: Vec<Box<dyn SharedLogger>> = vec![];
     loggers.push(WriteLogger::new(
         log_level,
         Config::default(),
-        std::fs::File::create("specula.log").unwrap(),
+        std::fs::File::create(&log_path).unwrap(),
     ));
     if cfg!(debug_assertions) {
         loggers.push(SimpleLogger::new(log_level, Config::default()));

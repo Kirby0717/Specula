@@ -37,7 +37,7 @@ FunctionEnd
 Section "Install"
   SetOutPath "$INSTDIR"
 
-  File "target\x86_64-pc-windows-gnu\release\specula.exe"
+  File "target\x86_64-pc-windows-msvc\release\specula.exe"
   File "LICENSE-MIT"
   File "LICENSE-APACHE"
   File "THIRD-PARTY-LICENSES.html"
