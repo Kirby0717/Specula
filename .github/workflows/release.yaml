@@ -34,7 +34,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal
 
       - name: cargo-binstallのインストール
-        uses: cargo-bins/cargo-binstall@v1
+        uses: cargo-bins/cargo-binstall@main
 
       - name: cargo-aboutのインストール
         run: cargo binstall --no-confirm cargo-about
