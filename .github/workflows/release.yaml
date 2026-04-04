@@ -15,19 +15,26 @@ jobs:
     name: サードパーティライセンスの生成
     runs-on: ubuntu-latest
 
-
     steps:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v5
 
+     - name: バージョンの整合性チェック
+     shell: bash
+     run: |
+       CARGO_VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "specula") | .version'
+       TAG_VERSION="${GITHUB_REF_NAME#v}"
+       if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+         echo "::error::バージョン不一致: Cargo.toml=${CARGO_VERSION}, tag=${TAG_VERSION}"
+         exit 1
+       fi
+       echo "バージョン一致: ${CARGO_VERSION}"
 
       - name: Rustのインストール
         run: rustup toolchain install stable --profile minimal
 
-
       - name: cargo-aboutのインストール
         run: cargo install --locked cargo-about
-
 
       - name: about.hbsの生成
         run: |
@@ -74,7 +81,6 @@ jobs:
       - name: THIRD-PARTY-LICENSES.htmlの生成
         run: cargo about generate about.hbs > THIRD-PARTY-LICENSES.html
 
-
       - name: THIRD-PARTY-LICENSES.htmlのアップロード
         uses: actions/upload-artifact@v7
         with:
@@ -98,30 +104,28 @@ jobs:
             archive: zip
             ext: .exe
 
-
           # Linux (64bit, 動的リンク)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
             ext: ""
 
-
           # macOS (Apple Silicon)
           #- target: aarch64-apple-darwin
           #  os: macos-latest
           #  archive: tar.gz
           #  ext: ""
+
+
     steps:
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v6
-
 
       - name: THIRD-PARTY-LICENSES.htmlのダウンロード
         uses: actions/download-artifact@v8
         with:
           name: third-party-licenses
           path: ./
-
 
       - name: Rustのインストール
         run: |
@@ -144,7 +148,6 @@ jobs:
 
       - name: ターミナルのリリースビルド
         run: cargo build --release --target ${{ matrix.target }}
-
 
       - name: バイナリのストリップ (Linux/macOS)
         if: matrix.os != 'windows-latest'
@@ -207,11 +210,15 @@ jobs:
           echo "========================================" >> LICENSE-AGREEMENT.txt
           cat LICENSE-APACHE >> LICENSE-AGREEMENT.txt
 
+      - name: NSISのインストール
+        if: matrix.os == 'windows-latest'
+        uses: repolevedavaj/setup-nsis@v1
+
       - name: NSISインストーラの生成 (Windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          makensis installer.nsi
+          makensis -DPRODUCT_VERSION=${VERSION} installer.nsi
           echo "INSTALLER_PATH=specula-setup.exe" >> $GITHUB_ENV
 
       - name: GitHub Releaseへのアップロード

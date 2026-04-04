@@ -1,8 +1,14 @@
-!include "MUI2.nsh"
+﻿!include "MUI2.nsh"
+!include "x64.nsh"
 
-Name "specula"
-OutFile "specula-setup.exe"
-InstallDir "$PROGRAMFILES64\specula"
+!define PRODUCT_NAME "specula"
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION "dev"
+!endif
+
+Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
+OutFile "${PRODUCT_NAME}-${PRODUCT_VERSION}-setup.exe"
+InstallDir "$PROGRAMFILES\${PRODUCT_NAME}"
 
 RequestExecutionLevel admin
 
@@ -16,6 +22,17 @@ RequestExecutionLevel admin
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "Japanese"
+
+Function .onInit
+  ${If} ${RunningX64}
+    StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCT_NAME}"
+    SetRegView 64
+    ${DisableX64FSRedirection}
+  ${Else}
+    MessageBox MB_OK|MB_ICONSTOP "このアプリケーションは64bit Windowsが必要です。"
+    Abort
+  ${EndIf}
+FunctionEnd
 
 Section "Install"
   SetOutPath "$INSTDIR"
@@ -33,6 +50,13 @@ Section "Install"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\specula" "DisplayIcon" '"$INSTDIR\specula.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\specula" "Publisher" "Kirby0717"
 SectionEnd
+
+Function un.onInit
+  ${If} ${RunningX64}
+    SetRegView 64
+    ${DisableX64FSRedirection}
+  ${EndIf}
+FunctionEnd
 
 Section "Uninstall"
   Delete "$INSTDIR\specula.exe"
